@@ -1,6 +1,7 @@
-// Workers AI calls: structured extraction from statement text,
-// categorization of counterparties, and page transcription with a vision
-// model for scanned PDFs.
+// Workers AI calls. One multimodal model does all the AI work: reading
+// scanned pages, extracting transactions and the statement header, and
+// categorizing counterparties. Text PDFs are converted with toMarkdown first
+// (not a model, and free); scans are rendered to images in the browser.
 import { CATEGORIES, type Category } from "../../shared/categories";
 import {
 	CATEGORIZE_JSON_SCHEMA,
@@ -17,27 +18,33 @@ import {
 } from "./extraction";
 
 /**
- * Text model for structured extraction. gpt-oss-120b: 128k context, strong
- * instruction following, supports `response_format: json_schema`, and is far
- * cheaper per output token than llama-3.3-70b (68k vs 205k neurons per M), which
- * matters because the output (every transaction as JSON) is the bulk of the cost.
+ * DeepSeek V4.1 Flash: reads images and text, 1M-token context, JSON-schema
+ * output, adjustable reasoning. $0.30 per M input and $1.20 per M output tokens
+ * (Workers Paid only).
  */
-export const EXTRACTION_MODEL = "@cf/openai/gpt-oss-120b" as const;
+export const MODEL = "@cf/deepseek-ai/deepseek-v4.1-flash-1017";
 
-/** Items per categorization call. */
-export const CATEGORIZE_BATCH = 60;
+/** Reasoning levels the model supports. */
+export type ReasoningEffort = "none" | "low" | "high" | "max";
 
-/** Vision model to transcribe scanned pages (accepts base64 data-URL images). */
-export const VISION_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct" as const;
+/** Reasoning effort per task: first attempt, then retries. */
+const EFFORT = {
+	chunk: ["low", "high"],
+	header: ["low", "high"],
+	categorize: ["low", "high"],
+	transcribe: ["low", "high"],
+} as const satisfies Record<string, readonly [ReasoningEffort, ReasoningEffort]>;
+const effortFor = (task: keyof typeof EFFORT, attempt: number) => EFFORT[task][attempt > 1 ? 1 : 0];
 
 /**
- * ~2-3k tokens of statement text per call (roughly 25-40 transactions). The
- * model reasons before answering, and on long inputs that took ~4 minutes and
- * hit the Workers AI request timeout; small chunks run in parallel instead.
+ * ~2-3k tokens of statement text per call (roughly 25-40 transactions), run in
+ * parallel: long inputs with reasoning took minutes and could hit the Workers
+ * AI request timeout.
  */
 export const CHUNK_CHARS = 8_000;
 
-export type ReasoningEffort = "low" | "medium" | "high";
+/** Items per categorization call. */
+export const CATEGORIZE_BATCH = 60;
 
 const GUIDANCE = `supermarkets, butchers, greengrocers, markets -> Groceries; cafes, bakeries, snack bars -> Coffee & Snacks; restaurants and food delivery -> Restaurants; clothing, shoes and fashion stores (including fashion chains) -> Clothing & Fashion; department stores, online marketplaces, electronics, home goods, drugstores -> Shopping; bars, pubs, clubs (in Dutch and Belgian statements "café" or "cafe" usually means a pub) -> Bars & Nightlife; trains, public transport, taxis, ride hailing, fuel, parking -> Transport; flights, hotels, holiday rentals -> Travel; rent, mortgage, housing association -> Rent & Housing; energy, water, internet, mobile phone -> Utilities; streaming, software, cloud hosting, email, AI tools, news and other online services -> Subscriptions; gym, sports clubs and courts, pharmacy, doctor, health insurance, hairdressers and personal care -> Health & Fitness; cinema, concerts, games, events -> Entertainment; courses, books for study, tuition -> Education; charities, gifts -> Gifts & Donations; bank fees, interest charged, penalties -> Fees & Charges; moves between the holder's own accounts, savings transfers, and payments to or from other people (peer-to-peer payments and payment requests such as Tikkie, PayPal or Revolut transfers to friends, even when the description mentions what it was for) -> Transfers; salary, wages, benefits, interest received, tax refunds -> Income; anything else -> Other.`;
 
@@ -58,47 +65,70 @@ const CATEGORIZE_PROMPT = `You categorize bank transactions for a personal finan
 
 Guidance: ${GUIDANCE}
 
-Money coming in is usually Income (salary, refunds, interest) or Transfers (from own accounts or other people); purchases and bills are never Income. A refund from a shop keeps the shop's category. Use Other only when nothing fits.`;
+Money coming in is usually Income (salary, interest, cashback and bank rewards, insurance payouts, deposit refunds, tax refunds) or Transfers (from own accounts or other people); purchases and bills are never Income. A refund from a shop keeps the shop's category. Use Other only when nothing fits.`;
 
-type Message = { role: "system" | "user"; content: string };
+type ContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
+type Message = { role: "system" | "user"; content: string | ContentPart[] };
 
 /**
- * Extract one chunk of statement text. Throws when the model returns invalid
- * or schema-violating output, so the calling Workflow step retries.
+ * Call the model and return the text of its answer. With a schema, the
+ * answer is constrained to JSON matching it. Token usage is logged, so cost
+ * can be checked in Workers observability.
+ */
+async function run(
+	ai: Ai,
+	task: string,
+	messages: Message[],
+	opts: { effort: ReasoningEffort; maxTokens: number; schema?: { name: string; schema: object } },
+): Promise<string> {
+	const result = (await ai.run(MODEL, {
+		messages,
+		...(opts.schema && {
+			response_format: { type: "json_schema", json_schema: { name: opts.schema.name, schema: opts.schema.schema, strict: true } },
+		}),
+		reasoning_effort: opts.effort,
+		max_completion_tokens: opts.maxTokens,
+		temperature: 0,
+	})) as {
+		choices?: { message?: { content?: unknown } }[];
+		response?: unknown;
+		usage?: Record<string, unknown>;
+	};
+	console.log(JSON.stringify({ event: "ai_usage", task, model: MODEL, effort: opts.effort, usage: result.usage ?? null }));
+	const content = result.choices?.[0]?.message?.content ?? result.response;
+	const text = typeof content === "string" ? content : content == null ? "" : JSON.stringify(content);
+	if (!text.trim()) throw new Error(`Empty response from ${MODEL} (${task})`);
+	return text;
+}
+
+/**
+ * Extract one chunk of statement text. Throws when the model returns invalid,
+ * schema-violating or clearly incomplete output, so the Workflow step retries
+ * (with more reasoning effort).
  */
 export async function extractChunk(
 	ai: Ai,
 	text: string,
 	part: { index: number; total: number },
-	effort: ReasoningEffort = "low",
+	attempt = 1,
 	checkCompleteness = true,
 ): Promise<ChunkExtraction> {
-	const messages: Message[] = [
-		{ role: "system", content: SYSTEM_PROMPT },
-		{
-			role: "user",
-			content:
-				(part.total > 1
-					? `This is part ${part.index + 1} of ${part.total} of the statement. Extract only the transactions in this part.\n\n`
-					: "") + `Statement text:\n\n${text}`,
-		},
-	];
-	const result = await ai.run(EXTRACTION_MODEL, {
-		messages,
-		response_format: {
-			type: "json_schema",
-			json_schema: { name: "statement_extraction", schema: CHUNK_JSON_SCHEMA as unknown as Record<string, unknown>, strict: true },
-		},
-		reasoning_effort: effort,
-		max_tokens: 16_000,
-		temperature: 0,
-	});
-	const content = "choices" in result ? result.choices?.[0]?.message?.content : undefined;
-	if (!content) throw new Error(`Empty response from ${EXTRACTION_MODEL}`);
+	const content = await run(
+		ai,
+		"extract",
+		[
+			{ role: "system", content: SYSTEM_PROMPT },
+			{
+				role: "user",
+				content:
+					(part.total > 1
+						? `This is part ${part.index + 1} of ${part.total} of the statement. Extract only the transactions in this part.\n\n`
+						: "") + `Statement text:\n\n${text}`,
+			},
+		],
+		{ effort: effortFor("chunk", attempt), maxTokens: 32_000, schema: { name: "statement_extraction", schema: CHUNK_JSON_SCHEMA } },
+	);
 	const extraction = parseChunkExtraction(content);
-	// Seen with low reasoning effort on dense layouts: an empty or short answer
-	// for text that clearly has more transactions. Throw so the step retries
-	// (with more effort, see the Workflow).
 	if (extraction.transactions.length === 0 && looksLikeTransactions(text)) {
 		throw new Error("The model returned no transactions for a part of the statement that contains some.");
 	}
@@ -115,22 +145,16 @@ const HEADER_PROMPT = `You read the header and summary of a bank statement (any 
 PDF text extraction can separate labels from values: a block of labels (e.g. "starting balance", "ending balance", "total in", "total out") may be followed by a block of amounts in the same order; pair them up by position. Opening balance is the balance at the start of the period, closing balance at the end. Do not use totals of money in or out as balances.`;
 
 /** Extract statement-level fields from the start and end of the statement. */
-export async function extractHeader(ai: Ai, excerpt: string, effort: ReasoningEffort = "medium"): Promise<StatementHeader> {
-	const result = await ai.run(EXTRACTION_MODEL, {
-		messages: [
+export async function extractHeader(ai: Ai, excerpt: string, attempt = 1): Promise<StatementHeader> {
+	const content = await run(
+		ai,
+		"header",
+		[
 			{ role: "system", content: HEADER_PROMPT },
 			{ role: "user", content: `Statement text:\n\n${excerpt}` },
 		],
-		response_format: {
-			type: "json_schema",
-			json_schema: { name: "statement_header", schema: HEADER_JSON_SCHEMA as unknown as Record<string, unknown>, strict: true },
-		},
-		reasoning_effort: effort,
-		max_tokens: 4_000,
-		temperature: 0,
-	});
-	const content = "choices" in result ? result.choices?.[0]?.message?.content : undefined;
-	if (!content) throw new Error(`Empty header response from ${EXTRACTION_MODEL}`);
+		{ effort: effortFor("header", attempt), maxTokens: 8_000, schema: { name: "statement_header", schema: HEADER_JSON_SCHEMA } },
+	);
 	return parseStatementHeader(content);
 }
 
@@ -138,46 +162,37 @@ export async function extractHeader(ai: Ai, excerpt: string, effort: ReasoningEf
  * Categorize a batch of unique counterparties. Throws (so the step retries)
  * on invalid output or when an id is missing.
  */
-export async function categorize(ai: Ai, items: CategorizeItem[], effort: ReasoningEffort = "medium"): Promise<Record<number, Category>> {
-	const result = await ai.run(EXTRACTION_MODEL, {
-		messages: [
+export async function categorize(ai: Ai, items: CategorizeItem[], attempt = 1): Promise<Record<number, Category>> {
+	const content = await run(
+		ai,
+		"categorize",
+		[
 			{ role: "system", content: CATEGORIZE_PROMPT },
 			{ role: "user", content: JSON.stringify(items) },
 		],
-		response_format: {
-			type: "json_schema",
-			json_schema: { name: "categories", schema: CATEGORIZE_JSON_SCHEMA as unknown as Record<string, unknown>, strict: true },
-		},
-		reasoning_effort: effort,
-		max_tokens: 8_000,
-		temperature: 0,
-	});
-	const content = "choices" in result ? result.choices?.[0]?.message?.content : undefined;
-	if (!content) throw new Error(`Empty categorization response from ${EXTRACTION_MODEL}`);
+		{ effort: effortFor("categorize", attempt), maxTokens: 16_000, schema: { name: "categories", schema: CATEGORIZE_JSON_SCHEMA } },
+	);
 	return parseCategorization(content, items.map((i) => i.id));
 }
 
-const VISION_PROMPT = `This image is one page of a bank statement. Transcribe ALL text on the page as plain text, top to bottom. Put each table row or transaction on its own line and keep the columns in order separated by " | ". Copy dates, descriptions and amounts exactly as printed, including minus/plus signs, currency symbols, and decimal commas or points. Keep column headers (e.g. "Money out", "Money in", "Debit", "Credit", "Af/Bij") so it is clear which column an amount is in. Do not summarise, translate or add anything.`;
+const TRANSCRIBE_PROMPT = `This image is one page of a bank statement. Transcribe ALL text on the page as plain text, top to bottom. Put each table row or transaction on its own line and keep the columns in order separated by " | ". Copy dates, descriptions and amounts exactly as printed, including minus/plus signs, currency symbols, and decimal commas or points. Keep column headers (e.g. "Money out", "Money in", "Debit", "Credit", "Af/Bij") so it is clear which column an amount is in. Do not summarise, translate or add anything.`;
 
-/** Transcribe a page image (JPEG/PNG) to text with the vision model. */
-export async function transcribePage(ai: Ai, image: ArrayBuffer, mime: string): Promise<string> {
-	const dataUrl = `data:${mime};base64,${toBase64(image)}`;
-	const result = await ai.run(VISION_MODEL, {
-		messages: [
+/** Transcribe a scanned page image (JPEG/PNG) to text. */
+export async function transcribePage(ai: Ai, image: ArrayBuffer, mime: string, attempt = 1): Promise<string> {
+	return run(
+		ai,
+		"transcribe",
+		[
 			{
 				role: "user",
 				content: [
-					{ type: "text", text: VISION_PROMPT },
-					{ type: "image_url", image_url: { url: dataUrl } },
+					{ type: "text", text: TRANSCRIBE_PROMPT },
+					{ type: "image_url", image_url: { url: `data:${mime};base64,${toBase64(image)}` } },
 				],
 			},
 		],
-		max_tokens: 4096,
-		temperature: 0,
-	});
-	const text = typeof result.response === "string" ? result.response : JSON.stringify(result.response ?? "");
-	if (!text.trim()) throw new Error(`Empty transcription from ${VISION_MODEL}`);
-	return text;
+		{ effort: effortFor("transcribe", attempt), maxTokens: 16_000 },
+	);
 }
 
 function toBase64(buf: ArrayBuffer): string {

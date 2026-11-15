@@ -7,6 +7,7 @@
 //
 // The scanned fixture needs page images like the browser would send; on macOS
 // they are rendered with Quick Look, elsewhere that fixture is skipped.
+// All files are uploaded at once and processed concurrently.
 // Finally it re-uploads one statement to check that dedupe inserts nothing, and
 // deletes that duplicate again.
 
@@ -111,12 +112,18 @@ const files = process.argv.slice(2).length
 	? process.argv.slice(2)
 	: (await readdir(DIR)).filter((f) => f.endsWith(".pdf")).sort();
 
+// Upload everything at once, so statements are processed concurrently (each
+// in its own Workflow instance), then wait for all of them.
 const report = [];
-for (const file of files) {
-	const expected = JSON.parse(await readFile(join(DIR, "expected", file.replace(/\.pdf$/, ".json")), "utf8"));
-	const created = await upload(file);
-	if (!created) { console.log(`${file}: skipped (needs macOS to render page images)`); continue; }
-	const got = await waitFor(created.id);
+const started = await Promise.all(
+	files.map(async (file) => {
+		const expected = JSON.parse(await readFile(join(DIR, "expected", file.replace(/\.pdf$/, ".json")), "utf8"));
+		return { file, expected, created: await upload(file) };
+	}),
+);
+const finished = await Promise.all(started.map(async (s) => ({ ...s, got: s.created ? await waitFor(s.created.id) : null })));
+for (const { file, expected, got } of finished) {
+	if (!got) { console.log(`${file}: skipped (needs macOS to render page images)`); continue; }
 	const entry = { file, id: got.id, status: got.status, seconds: got.seconds, method: got.extraction_method, warning: got.warning, error: got.error, inserted: got.inserted_count };
 	if (got.status === "done") Object.assign(entry, compare(expected, got));
 	report.push(entry);

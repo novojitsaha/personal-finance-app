@@ -10,15 +10,15 @@ Everything runs in a single [Cloudflare Worker](https://developers.cloudflare.co
 - **Frontend:** React + Vite single-page app (`src/react-app/`)
 - **D1** (`DB`): SQL database for transactions and analysis results
 - **R2** (`STATEMENTS`): storage for uploaded bank statements
-- **Workers AI** (`AI`): statement parsing and insights
+- **Workers AI** (`AI`): one multimodal model, [`@cf/deepseek-ai/deepseek-v4.1-flash-1017`](https://developers.cloudflare.com/workers-ai/models/deepseek-v4.1-flash-1017/), reads scanned pages, extracts transactions and categorizes them. It requires the Workers Paid plan.
 
 The deployed app is served only on a custom domain behind Cloudflare Access. `workers.dev` and preview URLs are turned off.
 
 ## How statement processing works
 
 1. **Upload** (`POST /api/statements`, multipart): the browser checks the PDF with [pdf.js](https://mozilla.github.io/pdf.js/). If it has no text layer (a scan), the browser renders up to 10 pages to JPEG and sends them along. The PDF goes to R2 at `statements/{id}.pdf`, a row goes into D1, and a [Workflow](https://developers.cloudflare.com/workflows/) instance starts.
-2. **Text**: [`env.AI.toMarkdown()`](https://developers.cloudflare.com/workers-ai/features/markdown-conversion/) extracts the PDF text. For scans, `@cf/meta/llama-4-scout-17b-16e-instruct` transcribes each page image instead.
-3. **Extraction**: the text is split into ~8k-character chunks that `@cf/openai/gpt-oss-120b` processes in parallel with a JSON schema (`response_format`). A separate call reads the header: bank, account, period and balances. Output is validated with zod. Signs are corrected from the running balance where the statement prints one. A chunk that returns fewer rows than the text clearly contains is retried with more reasoning effort.
+2. **Text**: [`env.AI.toMarkdown()`](https://developers.cloudflare.com/workers-ai/features/markdown-conversion/) extracts the PDF text. It isn't an AI model and is free for PDFs. For scans, the model transcribes each page image instead.
+3. **Extraction**: the text is split into ~8k-character chunks that the model processes in parallel with a JSON schema (`response_format`). A separate call reads the header: bank, account, period and balances. Output is validated with zod. Signs are corrected from the running balance where the statement prints one. A chunk that returns fewer rows than the text clearly contains is retried with more reasoning effort.
 4. **Categories**: each unique counterparty is categorized once, in a separate call, from a fixed list (see `src/shared/categories.ts`).
 5. **Checks and storage**: if the statement shows opening and closing balances, the transactions must add up; otherwise the statement gets a warning. Transactions are inserted with a `dedupe_hash` (account, date, amount, occurrence), so re-uploading overlapping statements doesn't double-count.
 
