@@ -38,5 +38,15 @@
 			"bucket_name": "personal-finance-statements"
 		}
 	],
-	"ai": { "binding": "AI" }
+	// Workers AI has no local simulation; "remote" makes `npm run dev` call the
+	// real models (billed like production use).
+	"ai": { "binding": "AI", "remote": true },
+	// Durable, retryable processing of uploaded statements.
+	"workflows": [
+		{
+			"name": "statement-processing",
+			"binding": "STATEMENT_WORKFLOW",
+			"class_name": "StatementWorkflow"
+		}
+	]
 }

@@ -1,0 +1,326 @@
+{
+	"bank": "Revolut",
+	"account": "LT12 3250 0123 4567 8910",
+	"holder": "J. Jansen",
+	"currency": "EUR",
+	"start": "2026-09-01",
+	"end": "2026-09-30",
+	"opening": 1512.4,
+	"closing": 1640.05,
+	"transactions": [
+		{
+			"date": "2026-09-01",
+			"description": "WONINGSTICHTING DE KEY HUUR",
+			"merchant": "De Key",
+			"category": "Rent & Housing",
+			"acceptable": [
+				"Rent & Housing"
+			],
+			"amount": -1250
+		},
+		{
+			"date": "2026-09-03",
+			"description": "VATTENFALL KLANTENSERVICE",
+			"merchant": "Vattenfall",
+			"category": "Utilities",
+			"acceptable": [
+				"Utilities"
+			],
+			"amount": -95.46
+		},
+		{
+			"date": "2026-09-03",
+			"description": "UBER *TRIP HELP.UBER.COM",
+			"merchant": "Uber",
+			"category": "Transport",
+			"acceptable": [
+				"Transport"
+			],
+			"amount": -30.55
+		},
+		{
+			"date": "2026-09-03",
+			"description": "LIDL NEDERLAND GMBH",
+			"merchant": "Lidl",
+			"category": "Groceries",
+			"acceptable": [
+				"Groceries"
+			],
+			"amount": -10.58
+		},
+		{
+			"date": "2026-09-04",
+			"description": "BOOKING.COM HOTEL RESERVATION",
+			"merchant": "Booking.com",
+			"category": "Travel",
+			"acceptable": [
+				"Travel"
+			],
+			"amount": -230.27
+		},
+		{
+			"date": "2026-09-05",
+			"description": "VATTENFALL KLANTENSERVICE",
+			"merchant": "Vattenfall",
+			"category": "Utilities",
+			"acceptable": [
+				"Utilities"
+			],
+			"amount": -132.3
+		},
+		{
+			"date": "2026-09-08",
+			"description": "H&M HENNES & MAURITZ",
+			"merchant": "H&M",
+			"category": "Clothing & Fashion",
+			"acceptable": [
+				"Clothing & Fashion"
+			],
+			"amount": -24.95
+		},
+		{
+			"date": "2026-09-09",
+			"description": "AMAZON EU SARL AMAZON.NL",
+			"merchant": "Amazon",
+			"category": "Shopping",
+			"acceptable": [
+				"Shopping"
+			],
+			"amount": -42.05
+		},
+		{
+			"date": "2026-09-09",
+			"description": "KLM ROYAL DUTCH AIRLINES",
+			"merchant": "KLM",
+			"category": "Travel",
+			"acceptable": [
+				"Travel"
+			],
+			"amount": -306.23
+		},
+		{
+			"date": "2026-09-12",
+			"description": "TIKKIE J. DE VRIES ETENTJE",
+			"merchant": "J. de Vries",
+			"category": "Transfers",
+			"acceptable": [
+				"Transfers",
+				"Income"
+			],
+			"amount": 22.5
+		},
+		{
+			"date": "2026-09-12",
+			"description": "BOL.COM BV UTRECHT",
+			"merchant": "bol.com",
+			"category": "Shopping",
+			"acceptable": [
+				"Shopping"
+			],
+			"amount": -25.76
+		},
+		{
+			"date": "2026-09-12",
+			"description": "BASIC-FIT NEDERLAND B.V.",
+			"merchant": "Basic-Fit",
+			"category": "Health & Fitness",
+			"acceptable": [
+				"Health & Fitness",
+				"Subscriptions"
+			],
+			"amount": -29.99
+		},
+		{
+			"date": "2026-09-14",
+			"description": "STICHTING UNICEF NEDERLAND",
+			"merchant": "UNICEF",
+			"category": "Gifts & Donations",
+			"acceptable": [
+				"Gifts & Donations"
+			],
+			"amount": -13.85
+		},
+		{
+			"date": "2026-09-15",
+			"description": "GVB AMSTERDAM OV-CHIPKAART",
+			"merchant": "GVB",
+			"category": "Transport",
+			"acceptable": [
+				"Transport"
+			],
+			"amount": -7.88
+		},
+		{
+			"date": "2026-09-15",
+			"description": "H&M HENNES & MAURITZ",
+			"merchant": "H&M",
+			"category": "Clothing & Fashion",
+			"acceptable": [
+				"Clothing & Fashion"
+			],
+			"amount": -51.3
+		},
+		{
+			"date": "2026-09-18",
+			"description": "PATHE TUSCHINSKI",
+			"merchant": "Pathe",
+			"category": "Entertainment",
+			"acceptable": [
+				"Entertainment"
+			],
+			"amount": -31.72
+		},
+		{
+			"date": "2026-09-22",
+			"description": "CAFE DE KLOS AMSTERDAM",
+			"merchant": "Cafe de Klos",
+			"category": "Bars & Nightlife",
+			"acceptable": [
+				"Bars & Nightlife",
+				"Restaurants"
+			],
+			"amount": -38.94
+		},
+		{
+			"date": "2026-09-24",
+			"description": "ACME BV SALARIS",
+			"merchant": "Acme BV",
+			"category": "Income",
+			"acceptable": [
+				"Income"
+			],
+			"amount": 3412.55
+		},
+		{
+			"date": "2026-09-24",
+			"description": "ALBERT HEIJN 1234 AMSTERDAM",
+			"merchant": "Albert Heijn",
+			"category": "Groceries",
+			"acceptable": [
+				"Groceries"
+			],
+			"amount": -13.17
+		},
+		{
+			"date": "2026-09-24",
+			"description": "KLM ROYAL DUTCH AIRLINES",
+			"merchant": "KLM",
+			"category": "Travel",
+			"acceptable": [
+				"Travel"
+			],
+			"amount": -194.86
+		},
+		{
+			"date": "2026-09-25",
+			"description": "NAAR SPAARREKENING NL12INGB0001234567",
+			"merchant": "Savings account",
+			"category": "Transfers",
+			"acceptable": [
+				"Transfers"
+			],
+			"amount": -300
+		},
+		{
+			"date": "2026-09-25",
+			"description": "JUMBO SUPERMARKTEN AMSTERDAM",
+			"merchant": "Jumbo",
+			"category": "Groceries",
+			"acceptable": [
+				"Groceries"
+			],
+			"amount": -48.75
+		},
+		{
+			"date": "2026-09-26",
+			"description": "BOL.COM BV UTRECHT",
+			"merchant": "bol.com",
+			"category": "Shopping",
+			"acceptable": [
+				"Shopping"
+			],
+			"amount": -88.31
+		},
+		{
+			"date": "2026-09-26",
+			"description": "KLM ROYAL DUTCH AIRLINES",
+			"merchant": "KLM",
+			"category": "Travel",
+			"acceptable": [
+				"Travel"
+			],
+			"amount": -187.69
+		},
+		{
+			"date": "2026-09-27",
+			"description": "NS GROEP IZ NS REIZIGERS",
+			"merchant": "NS",
+			"category": "Transport",
+			"acceptable": [
+				"Transport"
+			],
+			"amount": -18.47
+		},
+		{
+			"date": "2026-09-27",
+			"description": "SPOTIFY P2A3B4C5D6 STOCKHOLM",
+			"merchant": "Spotify",
+			"category": "Subscriptions",
+			"acceptable": [
+				"Subscriptions",
+				"Entertainment"
+			],
+			"amount": -11.99
+		},
+		{
+			"date": "2026-09-28",
+			"description": "AMAZON EU SARL AMAZON.NL",
+			"merchant": "Amazon",
+			"category": "Shopping",
+			"acceptable": [
+				"Shopping"
+			],
+			"amount": -20.05
+		},
+		{
+			"date": "2026-09-28",
+			"description": "H&M HENNES & MAURITZ",
+			"merchant": "H&M",
+			"category": "Clothing & Fashion",
+			"acceptable": [
+				"Clothing & Fashion"
+			],
+			"amount": -18.31
+		},
+		{
+			"date": "2026-09-28",
+			"description": "H&M HENNES & MAURITZ",
+			"merchant": "H&M",
+			"category": "Clothing & Fashion",
+			"acceptable": [
+				"Clothing & Fashion"
+			],
+			"amount": -56.86
+		},
+		{
+			"date": "2026-09-29",
+			"description": "H&M HENNES & MAURITZ",
+			"merchant": "H&M",
+			"category": "Clothing & Fashion",
+			"acceptable": [
+				"Clothing & Fashion"
+			],
+			"amount": -23.46
+		},
+		{
+			"date": "2026-09-30",
+			"description": "KOSTEN BETAALPAKKET",
+			"merchant": "Bank fees",
+			"category": "Fees & Charges",
+			"acceptable": [
+				"Fees & Charges"
+			],
+			"amount": -3.65
+		}
+	]
+}
