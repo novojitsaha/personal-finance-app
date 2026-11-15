@@ -1,90 +1,42 @@
-# React + Vite + Hono + Cloudflare Workers
+# Personal Finance App
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/vite-react-template)
+A personal finance app that analyzes bank statements and produces insights. It's under construction.
 
-This template provides a minimal setup for building a React application with TypeScript and Vite, designed to run on Cloudflare Workers. It features hot module replacement, ESLint integration, and the flexibility of Workers deployments.
+## Stack
 
-![React + TypeScript + Vite + Cloudflare Workers](https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/fc7b4b62-442b-4769-641b-ad4422d74300/public)
+Everything runs in a single [Cloudflare Worker](https://developers.cloudflare.com/workers/), scaffolded from Cloudflare's [`vite-react-template`](https://github.com/cloudflare/templates/tree/main/vite-react-template):
 
-<!-- dash-content-start -->
+- **API:** [Hono](https://hono.dev/) (`src/worker/`)
+- **Frontend:** React + Vite single-page app (`src/react-app/`)
+- **D1** (`DB`): SQL database for transactions and analysis results
+- **R2** (`STATEMENTS`): storage for uploaded bank statements
+- **Workers AI** (`AI`): statement parsing and insights
 
-🚀 Supercharge your web development with this powerful stack:
-
-- [**React**](https://react.dev/) - A modern UI library for building interactive interfaces
-- [**Vite**](https://vite.dev/) - Lightning-fast build tooling and development server
-- [**Hono**](https://hono.dev/) - Ultralight, modern backend framework
-- [**Cloudflare Workers**](https://developers.cloudflare.com/workers/) - Edge computing platform for global deployment
-
-### ✨ Key Features
-
-- 🔥 Hot Module Replacement (HMR) for rapid development
-- 📦 TypeScript support out of the box
-- 🛠️ ESLint configuration included
-- ⚡ Zero-config deployment to Cloudflare's global network
-- 🎯 API routes with Hono's elegant routing
-- 🔄 Full-stack development setup
-- 🔎 Built-in Observability to monitor your Worker
-
-Get started in minutes with local development or deploy directly via the Cloudflare dashboard. Perfect for building modern, performant web applications at the edge.
-
-<!-- dash-content-end -->
-
-## Getting Started
-
-To start a new project with this template, run:
-
-```bash
-npm create cloudflare@latest -- --template=cloudflare/templates/vite-react-template
-```
-
-A live deployment of this template is available at:
-[https://react-vite-template.templates.workers.dev](https://react-vite-template.templates.workers.dev)
+The deployed app is served only on a custom domain behind Cloudflare Access. `workers.dev` and preview URLs are turned off.
 
 ## Development
 
-Install dependencies:
-
 ```bash
 npm install
-```
-
-Start the development server with:
-
-```bash
 npm run dev
 ```
 
-Your application will be available at [http://localhost:5173](http://localhost:5173).
+The app runs at http://localhost:5173. Local D1 and R2 data is kept in `.wrangler/`. Note that Workers AI calls go to Cloudflare even in local dev.
 
-## Production
-
-Build your project for production:
+After changing `wrangler.jsonc`, regenerate binding types:
 
 ```bash
-npm run build
+npm run cf-typegen
 ```
 
-Preview your build locally:
+## Deploy
 
 ```bash
-npm run preview
+npm run deploy
 ```
 
-Deploy your project to Cloudflare Workers:
+This builds the app and deploys it with Wrangler. You need to be logged in (`npx wrangler login`) to the Cloudflare account that owns the D1 database and R2 bucket in `wrangler.jsonc`.
 
-```bash
-npm run build && npm run deploy
-```
+## License
 
-Monitor your workers:
-
-```bash
-npx wrangler tail
-```
-
-## Additional Resources
-
-- [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
-- [Vite Documentation](https://vitejs.dev/guide/)
-- [React Documentation](https://reactjs.org/)
-- [Hono Documentation](https://hono.dev/)
+[MIT](LICENSE)
