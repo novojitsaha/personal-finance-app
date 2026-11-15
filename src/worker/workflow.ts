@@ -16,7 +16,10 @@ import {
 	mergeChunks,
 	prepareStatementText,
 	reconcile,
+	accountKey,
 } from "./lib/extraction";
+import { merchantKey } from "./lib/analytics";
+import { type Alias, type VariantRule, resolveMerchants } from "./lib/merchants";
 
 export interface StatementParams {
 	statementId: string;
@@ -120,8 +123,35 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 			throw new Error("No transactions were found in this statement.");
 		}
 
-		// 4. Categorize each unique counterparty once, in parallel batches.
-		const { items, itemOf } = categorizeItems(extraction.transactions);
+		// 4. Categories. The user's "always use this category for this merchant"
+		//    overrides win; every other unique counterparty is categorized once
+		//    by the model, in parallel batches.
+		const fixed = await step.do("load category overrides", DB_RETRY, async () => {
+			const [aliases, variants, overrides] = await this.env.DB.batch([
+				this.env.DB.prepare("SELECT alias_key, canonical_key, canonical_name FROM merchant_aliases"),
+				this.env.DB.prepare("SELECT variant_key, merchant_name FROM merchant_variant_rules"),
+				this.env.DB.prepare("SELECT merchant_key, category FROM merchant_overrides"),
+			]);
+			// Resolve each new transaction's merchant the way the app shows it
+			// (split variants, renames, merges), then look up the override.
+			const resolved = resolveMerchants(
+				extraction.transactions.map((t, i) => ({
+					...t,
+					id: String(i),
+					statement_id: statementId,
+					merchant_key: merchantKey(t.merchant, t.description),
+					currency: t.currency,
+					category: "Other" as Category,
+					category_source: "ai" as const,
+				})),
+				aliases.results as unknown as Alias[],
+				variants.results as unknown as VariantRule[],
+			);
+			const byKey = new Map((overrides.results as { merchant_key: string; category: Category }[]).map((o) => [o.merchant_key, o.category]));
+			return resolved.map((t) => byKey.get(t.merchant_key) ?? null);
+		});
+		const toCategorize = extraction.transactions.filter((_, i) => !fixed[i]);
+		const { items, itemOf } = categorizeItems(toCategorize);
 		const batches: (typeof items)[] = [];
 		for (let i = 0; i < items.length; i += CATEGORIZE_BATCH) batches.push(items.slice(i, i + CATEGORIZE_BATCH));
 		const categoryById: Record<number, Category> = Object.assign(
@@ -134,20 +164,45 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 				),
 			)),
 		);
-		const categories = itemOf.map((id) => categoryById[id] ?? "Other");
+		let next = 0;
+		const categorized = extraction.transactions.map((_, i) => {
+			const fixedCategory = fixed[i];
+			return fixedCategory
+				? { category: fixedCategory, source: "user" as const }
+				: { category: categoryById[itemOf[next++]] ?? ("Other" as Category), source: "ai" as const };
+		},
+		);
 
 		// 5. Reconcile, dedupe and store.
 		await step.do("save transactions", DB_RETRY, async () => {
 			const warning = reconcile(extraction);
-			const hashes = await dedupeHashes(extraction.account, extraction.transactions);
+			const hashes = await dedupeHashes(accountKey(extraction), extraction.transactions);
 			const insert = this.env.DB.prepare(
 				`INSERT INTO transactions (id, statement_id, date, description, merchant, amount, currency, category, category_source, dedupe_hash)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ai', ?)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				 ON CONFLICT (dedupe_hash) DO NOTHING`,
 			);
-			const inserts = extraction.transactions.map((t, i) =>
-				insert.bind(crypto.randomUUID(), statementId, t.date, t.description, t.merchant, t.amount, t.currency, categories[i], hashes[i]),
+			// Link this statement to each of its transactions, whether just
+			// inserted or already stored from an overlapping statement.
+			const link = this.env.DB.prepare(
+				`INSERT OR IGNORE INTO statement_transactions (statement_id, transaction_id)
+				 SELECT ?, id FROM transactions WHERE dedupe_hash = ?`,
 			);
+			const inserts = extraction.transactions.flatMap((t, i) => [
+				insert.bind(
+					crypto.randomUUID(),
+					statementId,
+					t.date,
+					t.description,
+					t.merchant,
+					t.amount,
+					t.currency,
+					categorized[i].category,
+					categorized[i].source,
+					hashes[i],
+				),
+				link.bind(statementId, hashes[i]),
+			]);
 			// One batch = one transaction, so a retry never leaves a partial insert.
 			// inserted_count is counted in SQL, so it stays right on retries too.
 			const update = this.env.DB.prepare(

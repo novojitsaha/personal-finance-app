@@ -7,7 +7,7 @@ A personal finance app that analyzes bank statements and produces insights. It's
 Everything runs in a single [Cloudflare Worker](https://developers.cloudflare.com/workers/), scaffolded from Cloudflare's [`vite-react-template`](https://github.com/cloudflare/templates/tree/main/vite-react-template):
 
 - **API:** [Hono](https://hono.dev/) (`src/worker/`)
-- **Frontend:** React + Vite single-page app (`src/react-app/`)
+- **Frontend:** React + Vite single-page app (`src/react-app/`) built with [shadcn/ui](https://ui.shadcn.com/) (Tailwind CSS v4, Radix), [shadcn Charts](https://ui.shadcn.com/charts) (Recharts) and [TanStack Table](https://tanstack.com/table)
 - **D1** (`DB`): SQL database for transactions and analysis results
 - **R2** (`STATEMENTS`): storage for uploaded bank statements
 - **Workers AI** (`AI`): one multimodal model, [`@cf/deepseek-ai/deepseek-v4.1-flash-1017`](https://developers.cloudflare.com/workers-ai/models/deepseek-v4.1-flash-1017/), reads scanned pages, extracts transactions and categorizes them. It requires the Workers Paid plan.
@@ -22,13 +22,39 @@ The deployed app is served only on a custom domain behind Cloudflare Access. `wo
 4. **Categories**: each unique counterparty is categorized once, in a separate call, from a fixed list (see `src/shared/categories.ts`).
 5. **Checks and storage**: if the statement shows opening and closing balances, the transactions must add up; otherwise the statement gets a warning. Transactions are inserted with a `dedupe_hash` (account, date, amount, occurrence), so re-uploading overlapping statements doesn't double-count.
 
-API: `GET /api/statements`, `GET /api/statements/:id` (with transactions), `DELETE /api/statements/:id`.
+Statements API: `GET /api/statements`, `GET /api/statements/:id` (with transactions), `DELETE /api/statements/:id`. Overlapping statements are fine. Each statement is linked to all of its transactions (`statement_transactions`). Deleting one only removes transactions that no other statement contains.
+
+## Insights
+
+- **Dashboard** (`GET /api/dashboard?period=YYYY-MM|all`):
+  - Spent, income and net, compared with the previous month.
+  - Spending by category, as a donut and a full list.
+  - Change vs last month per category.
+  - Monthly trend and income vs spending.
+  - Top merchants and flagged charges.
+  - Transfers (between own accounts, to and from friends) are never counted as spending or income.
+- **Transactions** (`GET /api/transactions`):
+  - Search, plus filters by month, category, merchant (multi-select), recurring and flagged. Filters are kept in the URL.
+  - Changing a category applies to one transaction or to the whole merchant. A merchant-wide change is remembered for future uploads (`merchant_overrides`).
+- **Merchants:** variants of a name are grouped under one merchant ("AH", "AH to go 5812" and "Albert Heijn" all become Albert Heijn). Merchants can be renamed or merged, and a name variant can be split off again. These choices are stored in `merchant_aliases` and `merchant_variant_rules` and applied when data is read, so future uploads follow them. Each merchant page shows its totals, spending per month, name variants and transactions.
+- **Subscriptions:**
+  - **Marking:** you mark a payment as monthly recurring. Future charges from the same merchant within 10% of the previous charge match automatically.
+  - **Warnings:** the page warns when the price goes up or a charge is overdue.
+  - **Suggestions:** merchants charged a similar amount in 3+ months are suggested, and only marked once you confirm.
+- **Budgets:** a monthly budget per category, plus an overall one, compared with each completed month.
+- **Unusual charges** (`src/worker/lib/analytics.ts`, `FLAG_RULES`). A flag can be dismissed.
+  - More than 2.5× the merchant's median earlier charge, with at least 3 earlier charges and at least €20.
+  - A first payment to a merchant of €250 or more, once there is 30 days of history.
+  - The same merchant and amount within 2 days, for amounts of €10 or more.
+  - A recurring charge that went up.
+  - Bank fees.
 
 ## Development
 
 ```bash
 npm install
 npm run db:migrate:local
+npm run seed:local   # optional: six months of made-up data (wipes the local database)
 npm run dev
 ```
 
@@ -41,6 +67,7 @@ npm test            # unit tests (Vitest)
 npm run typecheck
 npm run fixtures    # regenerate the synthetic statements in test-fixtures/
 npm run test:e2e    # with `npm run dev` running: upload the fixtures and score extraction
+npm run test:overlap  # with `npm run dev` running: overlapping statements, both upload orders, deletes
 ```
 
 `test-fixtures/` contains made-up statements in different layouts (ING-, Revolut- and Bunq-like, plus an image-only "scanned" one) with their ground truth in `test-fixtures/expected/`. Never commit real bank statements; `.gitignore` blocks PDFs outside `test-fixtures/`.
@@ -58,6 +85,12 @@ npm run deploy
 ```
 
 Apply new D1 migrations first with `npm run db:migrate:remote`. Deploying builds the app and deploys it with Wrangler. You need to be logged in (`npx wrangler login`) to the Cloudflare account that owns the D1 database and R2 bucket in `wrangler.jsonc`.
+
+## Screenshots
+
+Taken with the synthetic data from `npm run seed:local`.
+
+![Dashboard](docs/screenshots/dashboard.png)
 
 ## License
 

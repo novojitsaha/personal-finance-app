@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	accountKey,
 	categorizeItems,
 	chunkText,
 	fixSignsFromRunningBalance,
@@ -104,24 +105,34 @@ describe("reconcile", () => {
 
 describe("dedupeHashes", () => {
 	const tx = (amount = -4.6, date = "2026-09-15") => ({ date, amount });
+	const ing = (account: string | null, bank: string | null = "ING", currency: string | null = "EUR") =>
+		accountKey({ account, bank, currency });
 
 	it("keeps identical transactions within one statement apart", async () => {
-		const [a, b] = await dedupeHashes("NL91 INGB 0004 3862 74", [tx(), tx()]);
+		const [a, b] = await dedupeHashes(ing("NL91 INGB 0004 3862 74"), [tx(), tx()]);
 		expect(a).not.toBe(b);
 	});
 
-	it("matches the same transactions in an overlapping statement, regardless of account formatting", async () => {
-		const first = await dedupeHashes("NL91INGB0004386274", [tx(), tx(), tx(-1250)]);
-		const second = await dedupeHashes("nl91 ingb 0004 3862 74", [tx(), tx()]);
+	it("matches the same transactions in an overlapping statement, however the account is printed", async () => {
+		const first = await dedupeHashes(ing("NL91INGB0004386274"), [tx(), tx(), tx(-1250)]);
+		const second = await dedupeHashes(ing("IBAN: nl91 ingb 0004 3862 74 (J. Jansen)", "ING Bank N.V."), [tx(), tx()]);
 		expect(second).toEqual(first.slice(0, 2));
 	});
 
-	it("differs per account, date and amount", async () => {
-		const [a] = await dedupeHashes("NL01", [tx()]);
-		const [b] = await dedupeHashes("NL02", [tx()]);
-		const [c] = await dedupeHashes("NL01", [tx(-4.61)]);
-		const [d] = await dedupeHashes("NL01", [tx(-4.6, "2026-09-16")]);
-		expect(new Set([a, b, c, d]).size).toBe(4);
+	it("differs per account, currency, date and amount", async () => {
+		const hashes = await Promise.all([
+			dedupeHashes(ing("NL91INGB0004386274"), [tx()]),
+			dedupeHashes(ing("NL02INGB0000000002"), [tx()]),
+			dedupeHashes(ing("NL91INGB0004386274", "ING", "USD"), [tx()]),
+			dedupeHashes(ing("NL91INGB0004386274"), [tx(-4.61)]),
+			dedupeHashes(ing("NL91INGB0004386274"), [tx(-4.6, "2026-09-16")]),
+		]);
+		expect(new Set(hashes.map((h) => h[0])).size).toBe(5);
+	});
+
+	it("falls back to bank + account name without an IBAN", () => {
+		expect(accountKey({ account: "Current Account", bank: "Revolut", currency: "EUR" })).toBe("REVOLUT:CURRENTACCOUNT|EUR");
+		expect(accountKey({ account: "current account", bank: "revolut", currency: "eur" })).toBe("REVOLUT:CURRENTACCOUNT|EUR");
 	});
 });
 

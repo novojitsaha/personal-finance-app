@@ -8,6 +8,10 @@ const MAX_PAGE_IMAGE_BYTES = 3 * 1024 * 1024;
 
 const STATEMENT_COLUMNS = `id, filename, size_bytes, page_count, bank, account_iban_or_name, currency, period_start, period_end,
 	opening_balance, closing_balance, status, error, warning, extraction_method, transaction_count, inserted_count,
+	(SELECT COUNT(*) FROM statement_transactions st
+	   WHERE st.statement_id = statements.id
+	     AND EXISTS (SELECT 1 FROM statement_transactions o WHERE o.transaction_id = st.transaction_id AND o.statement_id != statements.id)
+	) AS shared_count,
 	uploaded_at, processed_at`;
 
 export const statements = new Hono<{ Bindings: Env }>();
@@ -89,9 +93,12 @@ statements.get("/:id", async (c) => {
 	const id = c.req.param("id");
 	const [stmt, txs] = await c.env.DB.batch([
 		c.env.DB.prepare(`SELECT ${STATEMENT_COLUMNS} FROM statements WHERE id = ?`).bind(id),
+		// Via the link table: includes transactions first imported from an
+		// overlapping statement.
 		c.env.DB.prepare(
-			`SELECT id, statement_id, date, description, merchant, amount, currency, category, category_source, is_recurring
-			 FROM transactions WHERE statement_id = ? ORDER BY date, created_at, rowid`,
+			`SELECT t.id, t.statement_id, t.date, t.description, t.merchant, t.amount, t.currency, t.category, t.category_source, t.is_recurring
+			 FROM statement_transactions st JOIN transactions t ON t.id = st.transaction_id
+			 WHERE st.statement_id = ? ORDER BY t.date, t.created_at, t.rowid`,
 		).bind(id),
 	]);
 	const statement = stmt.results[0] as Statement | undefined;
@@ -117,11 +124,20 @@ statements.delete("/:id", async (c) => {
 	}
 	const pageImages = await c.env.STATEMENTS.list({ prefix: `statements/${id}/` });
 	await c.env.STATEMENTS.delete([row.r2_key, ...pageImages.objects.map((o) => o.key)]);
-	await c.env.DB.batch([
+	// A transaction can belong to several overlapping statements. Only delete
+	// the ones no other statement contains; the rest move to a remaining
+	// statement (transactions.statement_id cascades on delete).
+	const [, , deleted] = await c.env.DB.batch([
+		c.env.DB.prepare("DELETE FROM statement_transactions WHERE statement_id = ?").bind(id),
+		c.env.DB.prepare(
+			`UPDATE transactions
+			 SET statement_id = (SELECT MIN(st.statement_id) FROM statement_transactions st WHERE st.transaction_id = transactions.id)
+			 WHERE statement_id = ? AND EXISTS (SELECT 1 FROM statement_transactions st WHERE st.transaction_id = transactions.id)`,
+		).bind(id),
 		c.env.DB.prepare("DELETE FROM transactions WHERE statement_id = ?").bind(id),
 		c.env.DB.prepare("DELETE FROM statements WHERE id = ?").bind(id),
 	]);
-	return c.body(null, 204);
+	return c.json({ deleted_transactions: deleted.meta.changes ?? 0 });
 });
 
 function isPdf(buf: ArrayBuffer): boolean {

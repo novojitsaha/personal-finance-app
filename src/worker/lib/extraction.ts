@@ -363,13 +363,32 @@ export function normalizeAccount(s: string | null): string {
 	return (s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+/** An IBAN as printed: country code, check digits, then groups of up to 4. */
+const IBAN = /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b/;
+
+/**
+ * Identity of the account a statement belongs to, used in the dedupe hash so
+ * overlapping statements of the same account match even when the two PDFs
+ * print the account differently ("NL91 INGB 0004 3862 74" vs "NL91INGB0004386274").
+ * - An IBAN anywhere in the account field wins: uppercased, spaces removed.
+ * - Otherwise bank + account number/name, both normalized.
+ * The statement currency is appended, so e.g. the EUR and USD pockets of one
+ * Revolut account stay separate.
+ */
+export function accountKey(s: { account: string | null; bank: string | null; currency: string | null }): string {
+	const account = normalizeAccount(s.account);
+	const iban = (s.account ?? "").toUpperCase().match(IBAN)?.[0].replace(/ /g, "");
+	const base = iban ?? `${normalizeAccount(s.bank)}:${account}`;
+	return `${base}|${(s.currency ?? "").toUpperCase()}`;
+}
+
 async function sha256(text: string): Promise<string> {
 	const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
 	return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
- * dedupe_hash = sha256(account | date | amount | n), where n counts earlier
+ * dedupe_hash = sha256(accountKey | date | amount | n), where n counts earlier
  * transactions with the same account, date and amount in the same statement.
  *
  * The description is deliberately left out: it is retyped by the model on
@@ -380,10 +399,10 @@ async function sha256(text: string): Promise<string> {
  * overlapping statement hash to the same values and are skipped.
  */
 export async function dedupeHashes(
-	account: string | null,
+	account: string,
 	transactions: Pick<ExtractedTransaction, "date" | "amount">[],
 ): Promise<string[]> {
-	const acct = normalizeAccount(account);
+	const acct = account;
 	const seen = new Map<string, number>();
 	return Promise.all(
 		transactions.map((t) => {
