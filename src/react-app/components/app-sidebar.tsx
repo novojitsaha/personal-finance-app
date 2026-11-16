@@ -1,4 +1,4 @@
-import { CalendarClock, Cpu, FileText, MessageSquare, LayoutDashboard, PiggyBank, ReceiptText, Wallet } from "lucide-react";
+import { Brain, CalendarClock, Cpu, FileText, MessageSquare, LayoutDashboard, PiggyBank, ReceiptText, Wallet } from "lucide-react";
 import {
 	Sidebar,
 	SidebarContent,
@@ -15,6 +15,7 @@ import { href } from "@/router";
 export const NAV = [
 	{ path: "/", title: "Dashboard", icon: LayoutDashboard },
 	{ path: "/chat", title: "Chat", icon: MessageSquare },
+	{ path: "/memory", title: "Memory", icon: Brain },
 	{ path: "/transactions", title: "Transactions", icon: ReceiptText },
 	{ path: "/subscriptions", title: "Subscriptions", icon: CalendarClock },
 	{ path: "/budgets", title: "Budgets", icon: PiggyBank },

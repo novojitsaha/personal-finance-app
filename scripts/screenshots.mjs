@@ -26,8 +26,9 @@ const shots = [
 	{ file: "budgets.png", path: "/#/budgets?month=2026-10", size: [1280, 1650] },
 	{ file: "statements.png", path: "/#/statements", size: [1280, 1250] },
 	{ file: "dashboard-mobile.png", path: "/#/?period=2026-10", size: [390, 2600] },
-	{ file: "usage.png", path: "/#/usage", size: [1280, 1900] },
-	{ file: "usage-dark.png", path: "/#/usage", size: [1280, 1900], dark: true },
+	{ file: "usage.png", path: "/#/usage", size: [1280, 2200] },
+	{ file: "memory.png", path: "/#/memory", size: [1280, 800] },
+	{ file: "usage-dark.png", path: "/#/usage", size: [1280, 2200], dark: true },
 ];
 // The chat needs an existing conversation: CHAT_ID=<id> node scripts/screenshots.mjs chat.png
 if (process.env.CHAT_ID) shots.push({ file: "chat.png", path: `/#/chat?c=${process.env.CHAT_ID}`, size: [1280, 1100] });

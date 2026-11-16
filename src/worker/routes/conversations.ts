@@ -27,6 +27,14 @@ conversations.patch("/:id", async (c) => {
 	return c.json({ id, title: clean });
 });
 
+/** Save highlights from this conversation now instead of after it goes quiet. */
+conversations.post("/:id/highlights", async (c) => {
+	const id = c.req.param("id");
+	if (!CONVERSATION_ID.test(id)) return c.json({ error: "Conversation not found." }, 404);
+	const agent = await getAgentByName(c.env.ChatAgent, id);
+	return c.json(await agent.saveHighlights());
+});
+
 conversations.delete("/:id", async (c) => {
 	const id = c.req.param("id");
 	if (!CONVERSATION_ID.test(id)) return c.json({ error: "Conversation not found." }, 404);

@@ -23,6 +23,7 @@ export interface AiContext {
 	ai: Ai;
 	db?: D1Database;
 	statementId?: string;
+	conversationId?: string;
 }
 
 /**
@@ -122,6 +123,7 @@ async function run(
 		...tokensFromUsage(result.usage),
 		ok: !truncated && !!text.trim(),
 		statementId: ctx.statementId,
+		conversationId: ctx.conversationId,
 	});
 	if (truncated) {
 		throw new Error(`${MODEL} hit the output limit (${opts.maxTokens} tokens) before answering (${task}, reasoning ${opts.effort}).`);
@@ -235,4 +237,62 @@ function toBase64(buf: ArrayBuffer): string {
 		binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
 	}
 	return btoa(binary);
+}
+
+// ---------------------------------------------------------------------------
+// Monthly digest and chat highlights (step 4c)
+// ---------------------------------------------------------------------------
+
+const DIGEST_PROMPT = `You write a short monthly summary for a personal finance app. You get JSON facts about one month of one person's spending (amounts in the given currency; spending excludes transfers). Write 3 to 5 markdown bullet points, most important first: total spent and the change versus the previous month, the categories or merchants that drove the change, new merchants or one-off large purchases, subscription price changes or missed charges, and unusual charges worth checking. Use only numbers from the facts, formatted like €1,234.56. Be specific and plain; no greetings, no advice beyond pointing out what to check. If "complete" is false, the month is still in progress: say so in the first bullet and don't treat lower totals as savings.`;
+
+/** A short markdown summary of one month, from its computed facts. */
+export async function writeDigest(ctx: AiContext, facts: object, attempt = 1): Promise<string> {
+	const text = await run(ctx, "digest", "digest", [
+		{ role: "system", content: DIGEST_PROMPT },
+		{ role: "user", content: JSON.stringify(facts) },
+	], { effort: attempt > 1 ? "none" : "low", maxTokens: 4_000 });
+	return text.trim();
+}
+
+export interface Highlights {
+	add: { kind: "goal" | "fact" | "preference" | "note"; text: string }[];
+	update: { id: number; kind: "goal" | "fact" | "preference" | "note"; text: string }[];
+}
+
+const KIND = { type: "string", enum: ["goal", "fact", "preference", "note"] };
+const HIGHLIGHTS_SCHEMA = {
+	type: "object",
+	additionalProperties: false,
+	required: ["add", "update"],
+	properties: {
+		add: { type: "array", maxItems: 5, items: { type: "object", additionalProperties: false, required: ["kind", "text"], properties: { kind: KIND, text: { type: "string" } } } },
+		update: { type: "array", items: { type: "object", additionalProperties: false, required: ["id", "kind", "text"], properties: { id: { type: "integer" }, kind: KIND, text: { type: "string" } } } },
+	},
+};
+
+const HIGHLIGHTS_PROMPT = `You maintain a short memory for the chat assistant of a personal finance app, so future conversations don't start from zero. You get the existing memory notes (id, kind, text) and the latest part of a conversation between the user and the assistant.
+
+Return notes worth remembering in future chats, as JSON {"add": [...], "update": [...]}:
+- goal: targets or plans the user states ("Wants to keep eating out under €200 a month").
+- fact: things the user explains about their money that the data can't show ("The €1,250 transfer on the 1st is rent to the landlord", "Salary moved to a new employer from October 2026").
+- preference: how the user wants answers ("Prefers short answers with a table").
+- note: a conclusion the user cared about that is worth recalling, with its month ("In Oct 2026 groceries fell 40% vs Sep, mainly Albert Heijn").
+
+Rules:
+- Only durable, specific information. Skip greetings, one-off lookups, and numbers the app can recompute any time, unless the user reacted to them.
+- Never duplicate an existing note. If a new message changes or refines an existing note, put it in "update" with that note's id and the full new text.
+- Each note is one sentence, at most 200 characters, in English, written about "the user". No IBANs, card or account numbers.
+- Return {"add": [], "update": []} when there is nothing worth keeping. Most conversations add 0 to 2 notes.`;
+
+export async function extractHighlights(ctx: AiContext, existing: { id: number; kind: string; text: string }[], transcript: string, attempt = 1): Promise<Highlights> {
+	const text = await run(ctx, "highlights", "highlights", [
+		{ role: "system", content: HIGHLIGHTS_PROMPT },
+		{ role: "user", content: `Existing notes:\n${JSON.stringify(existing)}\n\nConversation:\n${transcript}` },
+	], { effort: attempt > 1 ? "none" : "low", maxTokens: 4_000, schema: { name: "highlights", schema: HIGHLIGHTS_SCHEMA } });
+	const parsed = JSON.parse(text) as Highlights;
+	const ok = (k: string) => ["goal", "fact", "preference", "note"].includes(k);
+	return {
+		add: (parsed.add ?? []).filter((n) => ok(n.kind) && n.text?.trim()).map((n) => ({ kind: n.kind, text: n.text.trim().slice(0, 300) })),
+		update: (parsed.update ?? []).filter((n) => ok(n.kind) && n.text?.trim() && Number.isInteger(n.id)).map((n) => ({ ...n, text: n.text.trim().slice(0, 300) })),
+	};
 }

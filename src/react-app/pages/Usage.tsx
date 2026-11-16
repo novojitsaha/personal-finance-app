@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { DataTable, SortHeader } from "@/components/data-table";
 import { useTheme } from "@/components/theme-provider";
+import { ToolCacheCard } from "@/components/tool-cache-card";
 import { getUsage } from "@/api";
 import { formatDate, monthLabel, usd } from "@/format";
 import { href } from "@/router";
@@ -62,6 +63,7 @@ export function Usage() {
 				<ByFeature data={data} />
 				<ChatCard data={data} />
 			</div>
+			<ToolCacheCard stats={data.tool_cache} />
 			<RecentCalls calls={data.recent} />
 		</div>
 	);

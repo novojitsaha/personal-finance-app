@@ -109,6 +109,11 @@ for (const g of groups) {
 
 const sql = [
 	"DELETE FROM ai_usage;",
+	"DELETE FROM tool_cache;",
+	"DELETE FROM tool_calls;",
+	"DELETE FROM digests;",
+	"DELETE FROM memories;",
+	"UPDATE app_meta SET value = value + 1 WHERE key = 'data_version';",
 	"DELETE FROM flag_dismissals;",
 	"DELETE FROM dismissed_recurring_suggestions;",
 	"DELETE FROM recurring_rules;",
