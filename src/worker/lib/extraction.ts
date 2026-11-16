@@ -491,3 +491,78 @@ export function parseCategorization(raw: unknown, ids: number[]): Record<number,
 	if (missing.length) throw new Error(`Categorization missed ${missing.length} of ${ids.length} items`);
 	return map;
 }
+
+// ---------------------------------------------------------------------------
+// Overlap safeguards (beyond exact dedupe_hash matches)
+// ---------------------------------------------------------------------------
+
+export interface StoredTransaction {
+	id: string;
+	date: string;
+	amount: number;
+	dedupe_hash: string;
+}
+
+const dayDiff = (a: string, b: string) => Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
+const sameAmount = (a: number, b: number) => Math.abs(round2(a) - round2(b)) < 0.005;
+
+/**
+ * How well a new statement's transactions in [from, to] line up with another
+ * statement's, by date and amount (one-to-one). Used to recognise the same
+ * account when the two PDFs were read with a different account name/number.
+ */
+export function overlapMatch(
+	fresh: { date: string; amount: number }[],
+	existing: { date: string; amount: number }[],
+	from: string,
+	to: string,
+): { rows: number; matched: number; ratio: number } {
+	const inWindow = fresh.filter((t) => t.date >= from && t.date <= to);
+	const pool = existing.filter((t) => t.date >= from && t.date <= to).map((t) => ({ ...t, used: false }));
+	let matched = 0;
+	for (const t of inWindow) {
+		const hit = pool.find((e) => !e.used && e.date === t.date && sameAmount(e.amount, t.amount));
+		if (hit) {
+			hit.used = true;
+			matched++;
+		}
+	}
+	return { rows: inWindow.length, matched, ratio: inWindow.length ? matched / inWindow.length : 0 };
+}
+
+/**
+ * Near-duplicates: new transactions without an exact dedupe_hash match are
+ * paired one-to-one with stored transactions of the same account that have
+ * the same amount and a date at most `maxDays` apart, and that no new row
+ * matched exactly. Catches the same payment read with a slightly different
+ * date (booking vs value date) from two overlapping PDFs, without merging
+ * genuinely separate payments (each stored transaction pairs at most once).
+ * Returns new-row index -> stored transaction id.
+ */
+export function pairNearDuplicates(
+	fresh: { date: string; amount: number }[],
+	hashes: string[],
+	existing: StoredTransaction[],
+	maxDays = 2,
+): Map<number, string> {
+	const exact = new Set(hashes);
+	const free = existing.filter((e) => !exact.has(e.dedupe_hash)).map((e) => ({ ...e, used: false }));
+	const existingHashes = new Set(existing.map((e) => e.dedupe_hash));
+	const pairs = new Map<number, string>();
+	const order = fresh.map((_, i) => i).sort((a, b) => fresh[a].date.localeCompare(fresh[b].date));
+	for (const i of order) {
+		if (existingHashes.has(hashes[i])) continue; // exact duplicate, handled by the hash
+		const t = fresh[i];
+		let best: (typeof free)[number] | null = null;
+		for (const e of free) {
+			if (e.used || !sameAmount(e.amount, t.amount)) continue;
+			const d = dayDiff(e.date, t.date);
+			if (d <= maxDays && (!best || d < dayDiff(best.date, t.date))) best = e;
+		}
+		if (best) {
+			best.used = true;
+			pairs.set(i, best.id);
+		}
+	}
+	return pairs;
+}

@@ -34,8 +34,8 @@ const lastDay = (m) => new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5
 const END = "2026-11-14";
 const day = (m, d) => `${m}-${String(Math.min(d, lastDay(m))).padStart(2, "0")}`;
 
-const ING = { bank: "ING", account: "NL91 INGB 0004 3862 74", currency: "EUR" };
-const REV = { bank: "Revolut", account: "LT12 3250 0123 4567 8910", currency: "EUR" };
+const ING = { bank: "ING", account: "NL91 INGB 0004 3862 74", currency: "EUR", key: "NL91INGB0004386274|EUR" };
+const REV = { bank: "Revolut", account: "LT12 3250 0123 4567 8910", currency: "EUR", key: "LT123250012345678910|EUR" };
 
 const statements = [];
 const txs = [];
@@ -121,8 +121,8 @@ const sql = [
 ];
 for (const st of statements) {
 	sql.push(
-		`INSERT INTO statements (id, r2_key, filename, size_bytes, page_count, bank, account_iban_or_name, currency, period_start, period_end, status, extraction_method, transaction_count, inserted_count, uploaded_at, processed_at) VALUES (${[
-			st.id, `statements/${st.id}.pdf`, st.name, 48213, 2, st.acct.bank, st.acct.account, "EUR", st.from, st.to, "done", "text", st.count, st.inserted, `${st.to}T09:00:00.000Z`, `${st.to}T09:01:00.000Z`,
+		`INSERT INTO statements (id, r2_key, filename, size_bytes, page_count, bank, account_iban_or_name, account_key, currency, period_start, period_end, status, extraction_method, transaction_count, inserted_count, uploaded_at, processed_at) VALUES (${[
+			st.id, `statements/${st.id}.pdf`, st.name, 48213, 2, st.acct.bank, st.acct.account, st.acct.key, "EUR", st.from, st.to, "done", "text", st.count, st.inserted, `${st.to}T09:00:00.000Z`, `${st.to}T09:01:00.000Z`,
 		].map(q).join(", ")});`,
 		...st.links.map((t) => `INSERT INTO statement_transactions (statement_id, transaction_id) VALUES (${q(st.id)}, ${q(t.id)});`),
 	);

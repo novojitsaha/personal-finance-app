@@ -17,6 +17,10 @@ import {
 	prepareStatementText,
 	reconcile,
 	accountKey,
+	normalizeAccount,
+	overlapMatch,
+	pairNearDuplicates,
+	type StoredTransaction,
 } from "./lib/extraction";
 import { merchantKey } from "./lib/analytics";
 import { type Alias, type VariantRule, resolveMerchants } from "./lib/merchants";
@@ -173,10 +177,53 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 		},
 		);
 
-		// 5. Reconcile, dedupe and store.
+		// 5. Which account is this? Normally the normalized account key. If no
+		//    earlier statement has that key, but one from the same bank with an
+		//    overlapping period contains (nearly) the same transactions, it's
+		//    the same account read differently: use that statement's key.
+		const periodStart = extraction.period_start ?? extraction.transactions[0].date;
+		const periodEnd = extraction.period_end ?? extraction.transactions.at(-1)!.date;
+		const key = await step.do("match account", DB_RETRY, async () => {
+			const own = accountKey(extraction);
+			const { results: candidates } = await this.env.DB.prepare(
+				`SELECT id, account_key, bank, account_iban_or_name AS account, currency, period_start, period_end FROM statements
+				 WHERE id != ? AND status = 'done' AND period_start <= ? AND period_end >= ?`,
+			)
+				.bind(statementId, periodEnd, periodStart)
+				.all<{ id: string; account_key: string | null; bank: string | null; account: string | null; currency: string | null; period_start: string; period_end: string }>();
+			const keyOf = (c: (typeof candidates)[number]) => c.account_key ?? accountKey(c);
+			if (!candidates.length || candidates.some((c) => keyOf(c) === own)) return own;
+			const bank = normalizeAccount(extraction.bank);
+			for (const c of candidates.filter((c) => !bank || normalizeAccount(c.bank) === bank)) {
+				const from = c.period_start > periodStart ? c.period_start : periodStart;
+				const to = c.period_end < periodEnd ? c.period_end : periodEnd;
+				const { results: theirs } = await this.env.DB.prepare(
+					`SELECT t.date, t.amount FROM statement_transactions st JOIN transactions t ON t.id = st.transaction_id
+					 WHERE st.statement_id = ? AND t.date BETWEEN ? AND ?`,
+				)
+					.bind(c.id, from, to)
+					.all<{ date: string; amount: number }>();
+				const m = overlapMatch(extraction.transactions, theirs, from, to);
+				if (m.rows >= 5 && m.ratio >= 0.8) return keyOf(c);
+			}
+			return own;
+		});
+
+		// 6. Reconcile, dedupe and store.
 		await step.do("save transactions", DB_RETRY, async () => {
 			const warning = reconcile(extraction);
-			const hashes = await dedupeHashes(accountKey(extraction), extraction.transactions);
+			const hashes = await dedupeHashes(key, extraction.transactions);
+			// Stored transactions of this account around this period, for
+			// near-duplicates (same payment, date read 1-2 days differently).
+			const { results: stored } = await this.env.DB.prepare(
+				`SELECT t.id, t.date, t.amount, t.dedupe_hash FROM transactions t
+				 WHERE t.date BETWEEN date(?, '-2 days') AND date(?, '+2 days')
+				   AND EXISTS (SELECT 1 FROM statement_transactions st JOIN statements s ON s.id = st.statement_id
+				               WHERE st.transaction_id = t.id AND s.account_key = ? AND s.id != ?)`,
+			)
+				.bind(periodStart, periodEnd, key, statementId)
+				.all<StoredTransaction>();
+			const near = pairNearDuplicates(extraction.transactions, hashes, stored);
 			const insert = this.env.DB.prepare(
 				`INSERT INTO transactions (id, statement_id, date, description, merchant, amount, currency, category, category_source, dedupe_hash)
 				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -188,25 +235,30 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 				`INSERT OR IGNORE INTO statement_transactions (statement_id, transaction_id)
 				 SELECT ?, id FROM transactions WHERE dedupe_hash = ?`,
 			);
-			const inserts = extraction.transactions.flatMap((t, i) => [
-				insert.bind(
-					crypto.randomUUID(),
-					statementId,
-					t.date,
-					t.description,
-					t.merchant,
-					t.amount,
-					t.currency,
-					categorized[i].category,
-					categorized[i].source,
-					hashes[i],
-				),
-				link.bind(statementId, hashes[i]),
-			]);
+			const linkId = this.env.DB.prepare("INSERT OR IGNORE INTO statement_transactions (statement_id, transaction_id) VALUES (?, ?)");
+			const inserts = extraction.transactions.flatMap((t, i) => {
+				const twin = near.get(i);
+				if (twin) return [linkId.bind(statementId, twin)];
+				return [
+					insert.bind(
+						crypto.randomUUID(),
+						statementId,
+						t.date,
+						t.description,
+						t.merchant,
+						t.amount,
+						t.currency,
+						categorized[i].category,
+						categorized[i].source,
+						hashes[i],
+					),
+					link.bind(statementId, hashes[i]),
+				];
+			});
 			// One batch = one transaction, so a retry never leaves a partial insert.
 			// inserted_count is counted in SQL, so it stays right on retries too.
 			const update = this.env.DB.prepare(
-				`UPDATE statements SET status = 'done', error = NULL, warning = ?, bank = ?, account_iban_or_name = ?, currency = ?,
+				`UPDATE statements SET status = 'done', error = NULL, warning = ?, bank = ?, account_iban_or_name = ?, account_key = ?, currency = ?,
 				   period_start = ?, period_end = ?, opening_balance = ?, closing_balance = ?, extraction_method = ?,
 				   transaction_count = ?, inserted_count = (SELECT COUNT(*) FROM transactions WHERE statement_id = ?),
 				   processed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -216,6 +268,7 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 				warning,
 				extraction.bank,
 				extraction.account,
+				key,
 				extraction.currency,
 				extraction.period_start,
 				extraction.period_end,

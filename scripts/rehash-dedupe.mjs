@@ -2,7 +2,8 @@
 // account key (IBAN, or bank + account name) plus the statement currency.
 // Recomputes dedupe_hash for transactions stored before that change, from
 // data already in D1 (statement account/bank/currency, transaction
-// date/amount), so re-uploading an old statement is still recognised.
+// date/amount), so re-uploading an old statement is still recognised, and
+// fills statements.account_key.
 //
 //   node scripts/rehash-dedupe.mjs --local | --remote [--dry-run]
 //
@@ -50,13 +51,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 	const byStatement = new Map();
 	for (const r of rows) byStatement.set(r.statement_id, [...(byStatement.get(r.statement_id) ?? []), r]);
 	const updates = [];
-	for (const list of byStatement.values()) {
-		const hashes = dedupeHashes(accountKey(list[0]), list);
+	for (const [statementId, list] of byStatement) {
+		const key = accountKey(list[0]);
+		updates.push(`UPDATE statements SET account_key = '${key.replace(/'/g, "''")}' WHERE id = '${statementId.replace(/'/g, "''")}' AND account_key IS NULL;`);
+		const hashes = dedupeHashes(key, list);
 		list.forEach((r, i) => {
 			if (r.dedupe_hash !== hashes[i] && !r.dedupe_hash.startsWith("seed:")) updates.push(`UPDATE transactions SET dedupe_hash = '${hashes[i]}' WHERE id = '${r.id.replace(/'/g, "''")}';`);
 		});
 	}
-	console.log(`${rows.length} transactions in ${byStatement.size} statements; ${updates.length} hashes to update.`);
+	console.log(`${rows.length} transactions in ${byStatement.size} statements; ${updates.length - byStatement.size} hashes to update; account_key set where missing.`);
 	if (!dry && updates.length) {
 		const file = join(mkdtempSync(join(tmpdir(), "rehash-")), "rehash.sql");
 		writeFileSync(file, updates.join("\n"));

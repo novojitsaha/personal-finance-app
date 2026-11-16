@@ -7,6 +7,12 @@ ALTER TABLE transactions ADD COLUMN merchant_key TEXT
 	GENERATED ALWAYS AS (lower(trim(coalesce(nullif(merchant, ''), description)))) VIRTUAL;
 CREATE INDEX transactions_merchant_key ON transactions (merchant_key, date);
 
+-- Normalized account identity of a statement (see accountKey() in
+-- src/worker/lib/extraction.ts). Filled for existing rows by
+-- scripts/rehash-dedupe.mjs.
+ALTER TABLE statements ADD COLUMN account_key TEXT;
+CREATE INDEX statements_account_key ON statements (account_key, period_start);
+
 -- Which statements contain each transaction. A transaction is stored once
 -- (dedupe_hash) but can appear in several overlapping statements; it is only
 -- deleted when no remaining statement contains it.

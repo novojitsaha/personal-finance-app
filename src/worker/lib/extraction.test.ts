@@ -11,6 +11,8 @@ import {
 	mergeChunks,
 	normalizeCategory,
 	normalizeDescription,
+	overlapMatch,
+	pairNearDuplicates,
 	parseCategorization,
 	parseChunkExtraction,
 	prepareStatementText,
@@ -221,5 +223,31 @@ describe("chunking and detection", () => {
 			})),
 		]);
 		expect([merged.period_start, merged.period_end]).toEqual(["2026-08-01", "2026-10-20"]);
+	});
+});
+
+describe("overlap safeguards", () => {
+	const tx = (date: string, amount: number) => ({ date, amount });
+	const stored = (id: string, date: string, amount: number, hash = `h-${id}`) => ({ id, date, amount, dedupe_hash: hash });
+
+	it("measures how well two statements line up in their overlap", () => {
+		const fresh = [tx("2026-10-01", -10), tx("2026-10-02", -20), tx("2026-10-02", -20), tx("2026-10-05", -30), tx("2026-11-01", -5)];
+		const existing = [tx("2026-09-30", -1), tx("2026-10-01", -10), tx("2026-10-02", -20), tx("2026-10-05", -30)];
+		expect(overlapMatch(fresh, existing, "2026-10-01", "2026-10-31")).toEqual({ rows: 4, matched: 3, ratio: 0.75 });
+	});
+
+	it("pairs a payment read with a slightly different date, one-to-one", () => {
+		const fresh = [tx("2026-10-03", -12.5), tx("2026-10-10", -4.6), tx("2026-10-10", -4.6)];
+		const hashes = ["new-a", "h-b", "new-c"];
+		const existing = [stored("a", "2026-10-02", -12.5), stored("b", "2026-10-10", -4.6), stored("c", "2026-10-20", -4.6)];
+		// a: same amount 1 day apart -> paired. Row 2 (4.60 on 10 Oct) matches b exactly via its hash;
+		// row 3 has no exact match and the only other 4.60 is 10 days away -> new.
+		expect([...pairNearDuplicates(fresh, hashes, existing)]).toEqual([[0, "a"]]);
+	});
+
+	it("never pairs two new rows with the same stored transaction", () => {
+		const fresh = [tx("2026-10-03", -9.99), tx("2026-10-04", -9.99)];
+		const existing = [stored("a", "2026-10-03", -9.99)];
+		expect(pairNearDuplicates(fresh, ["x", "y"], existing).size).toBe(1);
 	});
 });
