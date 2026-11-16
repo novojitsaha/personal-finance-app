@@ -363,13 +363,32 @@ export function normalizeAccount(s: string | null): string {
 	return (s ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+/** An IBAN as printed: country code, check digits, then groups of up to 4. */
+const IBAN = /\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,3})?\b/;
+
+/**
+ * Identity of the account a statement belongs to, used in the dedupe hash so
+ * overlapping statements of the same account match even when the two PDFs
+ * print the account differently ("NL91 INGB 0004 3862 74" vs "NL91INGB0004386274").
+ * - An IBAN anywhere in the account field wins: uppercased, spaces removed.
+ * - Otherwise bank + account number/name, both normalized.
+ * The statement currency is appended, so e.g. the EUR and USD pockets of one
+ * Revolut account stay separate.
+ */
+export function accountKey(s: { account: string | null; bank: string | null; currency: string | null }): string {
+	const account = normalizeAccount(s.account);
+	const iban = (s.account ?? "").toUpperCase().match(IBAN)?.[0].replace(/ /g, "");
+	const base = iban ?? `${normalizeAccount(s.bank)}:${account}`;
+	return `${base}|${(s.currency ?? "").toUpperCase()}`;
+}
+
 async function sha256(text: string): Promise<string> {
 	const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
 	return [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
- * dedupe_hash = sha256(account | date | amount | n), where n counts earlier
+ * dedupe_hash = sha256(accountKey | date | amount | n), where n counts earlier
  * transactions with the same account, date and amount in the same statement.
  *
  * The description is deliberately left out: it is retyped by the model on
@@ -380,10 +399,10 @@ async function sha256(text: string): Promise<string> {
  * overlapping statement hash to the same values and are skipped.
  */
 export async function dedupeHashes(
-	account: string | null,
+	account: string,
 	transactions: Pick<ExtractedTransaction, "date" | "amount">[],
 ): Promise<string[]> {
-	const acct = normalizeAccount(account);
+	const acct = account;
 	const seen = new Map<string, number>();
 	return Promise.all(
 		transactions.map((t) => {
@@ -471,4 +490,106 @@ export function parseCategorization(raw: unknown, ids: number[]): Record<number,
 	const missing = ids.filter((id) => !(id in map));
 	if (missing.length) throw new Error(`Categorization missed ${missing.length} of ${ids.length} items`);
 	return map;
+}
+
+// ---------------------------------------------------------------------------
+// Overlap safeguards (beyond exact dedupe_hash matches)
+// ---------------------------------------------------------------------------
+
+export interface StoredTransaction {
+	id: string;
+	date: string;
+	amount: number;
+	dedupe_hash: string;
+	merchant: string | null;
+	description: string;
+	/** Period covered by the stored transaction's statement(s). */
+	period_start: string;
+	period_end: string;
+}
+
+type Row = { date: string; amount: number; merchant?: string | null; description?: string };
+
+/** Same merchant, or descriptions that share most of their words. */
+export function similarCounterparty(a: Row, b: Row): boolean {
+	const ma = normalizeDescription(a.merchant ?? "");
+	const mb = normalizeDescription(b.merchant ?? "");
+	if (ma && ma === mb) return true;
+	const words = (r: Row) => new Set(normalizeDescription(`${r.merchant ?? ""} ${r.description ?? ""}`).split(" ").filter((w) => w.length > 1 && !/^\d+$/.test(w)));
+	const wa = words(a);
+	const wb = words(b);
+	if (!wa.size || !wb.size) return false;
+	const shared = [...wa].filter((w) => wb.has(w)).length;
+	return shared / Math.min(wa.size, wb.size) >= 0.6;
+}
+
+const dayDiff = (a: string, b: string) => Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
+const sameAmount = (a: number, b: number) => Math.abs(round2(a) - round2(b)) < 0.005;
+
+/**
+ * How well a new statement's transactions in [from, to] line up with another
+ * statement's, by date and amount (one-to-one). Used to recognise the same
+ * account when the two PDFs were read with a different account name/number.
+ */
+export function overlapMatch(
+	fresh: { date: string; amount: number }[],
+	existing: { date: string; amount: number }[],
+	from: string,
+	to: string,
+): { rows: number; matched: number; ratio: number } {
+	const inWindow = fresh.filter((t) => t.date >= from && t.date <= to);
+	const pool = existing.filter((t) => t.date >= from && t.date <= to).map((t) => ({ ...t, used: false }));
+	let matched = 0;
+	for (const t of inWindow) {
+		const hit = pool.find((e) => !e.used && e.date === t.date && sameAmount(e.amount, t.amount));
+		if (hit) {
+			hit.used = true;
+			matched++;
+		}
+	}
+	return { rows: inWindow.length, matched, ratio: inWindow.length ? matched / inWindow.length : 0 };
+}
+
+/**
+ * Near-duplicates: new transactions without an exact dedupe_hash match are
+ * paired one-to-one with stored transactions of the same account when ALL of:
+ * - both dates fall inside the period covered by both statements (the overlap),
+ * - the amount is the same and the dates are at most `maxDays` apart,
+ * - the counterparty is similar (same merchant or mostly the same words),
+ * - the stored transaction wasn't matched exactly by another new row.
+ * Catches the same payment read with a slightly different date (booking vs
+ * value date) from two overlapping PDFs, without merging genuinely separate
+ * payments. Returns new-row index -> stored transaction id.
+ */
+export function pairNearDuplicates(
+	fresh: Row[],
+	hashes: string[],
+	existing: StoredTransaction[],
+	period: { start: string; end: string },
+	maxDays = 2,
+): Map<number, string> {
+	const exact = new Set(hashes);
+	const free = existing.filter((e) => !exact.has(e.dedupe_hash)).map((e) => ({ ...e, used: false }));
+	const existingHashes = new Set(existing.map((e) => e.dedupe_hash));
+	const pairs = new Map<number, string>();
+	const order = fresh.map((_, i) => i).sort((a, b) => fresh[a].date.localeCompare(fresh[b].date));
+	for (const i of order) {
+		if (existingHashes.has(hashes[i])) continue; // exact duplicate, handled by the hash
+		const t = fresh[i];
+		let best: (typeof free)[number] | null = null;
+		for (const e of free) {
+			if (e.used || !sameAmount(e.amount, t.amount)) continue;
+			const from = e.period_start > period.start ? e.period_start : period.start;
+			const to = e.period_end < period.end ? e.period_end : period.end;
+			if (t.date < from || t.date > to || e.date < from || e.date > to) continue;
+			const d = dayDiff(e.date, t.date);
+			if (d > maxDays || !similarCounterparty(t, e)) continue;
+			if (!best || d < dayDiff(best.date, t.date)) best = e;
+		}
+		if (best) {
+			best.used = true;
+			pairs.set(i, best.id);
+		}
+	}
+	return pairs;
 }

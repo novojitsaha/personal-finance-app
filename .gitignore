@@ -202,4 +202,5 @@ dist
 # Only the synthetic fixtures in test-fixtures/ may be checked in.
 *.pdf
 !test-fixtures/*.pdf
+!test-fixtures/overlap/*.pdf
 private/

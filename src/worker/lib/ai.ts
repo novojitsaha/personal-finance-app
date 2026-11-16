@@ -27,21 +27,29 @@ export const MODEL = "@cf/deepseek-ai/deepseek-v4.1-flash-1017";
 /** Reasoning levels the model supports. */
 export type ReasoningEffort = "none" | "low" | "high" | "max";
 
-/** Reasoning effort per task: first attempt, then retries. */
+/**
+ * Reasoning effort per task, by attempt (the last entry repeats). Extraction
+ * alternates: a short answer benefits from more reasoning, but the model can
+ * also reason in circles until it hits the output limit, which less reasoning
+ * fixes. So: low, then none, then high.
+ */
 const EFFORT = {
-	chunk: ["low", "high"],
+	chunk: ["low", "none", "high"],
 	header: ["low", "high"],
 	categorize: ["low", "high"],
 	transcribe: ["low", "high"],
-} as const satisfies Record<string, readonly [ReasoningEffort, ReasoningEffort]>;
-const effortFor = (task: keyof typeof EFFORT, attempt: number) => EFFORT[task][attempt > 1 ? 1 : 0];
+} as const satisfies Record<string, readonly ReasoningEffort[]>;
+const effortFor = (task: keyof typeof EFFORT, attempt: number): ReasoningEffort => {
+	const steps: readonly ReasoningEffort[] = EFFORT[task];
+	return steps[Math.min(attempt, steps.length) - 1];
+};
 
 /**
- * ~2-3k tokens of statement text per call (roughly 25-40 transactions), run in
- * parallel: long inputs with reasoning took minutes and could hit the Workers
- * AI request timeout.
+ * ~1.5-2k tokens of statement text per call (roughly 20-45 transactions), run
+ * in parallel: long inputs with reasoning took minutes, and dense multi-line
+ * layouts sometimes made the model reason until it hit the output limit.
  */
-export const CHUNK_CHARS = 8_000;
+export const CHUNK_CHARS = 6_000;
 
 /** Items per categorization call. */
 export const CATEGORIZE_BATCH = 60;
@@ -56,7 +64,7 @@ Rules:
 - amount is signed: negative for money leaving the account (debit, "Af", "Money out", "-"), positive for money coming in (credit, "Bij", "Money in", "+"). Use the column the amount appears in or the debit/credit marker to decide the sign. The text was extracted from a PDF, so column positions may be lost and empty cells disappear; if there is a running balance column, the sign is the direction the balance moved (balance went down = negative). Use a dot as decimal separator and no thousands separators (e.g. "2.480,15" in a Dutch or German statement is 2480.15).
 - date: the booking/transaction date as YYYY-MM-DD. Use the statement period to fill in a missing year. In layouts grouped by date, a date heading applies to the transactions listed after it, up to the next date heading.
 - description: the transaction text as printed (counterparty and reference), on one line, without the amount or balance.
-- merchant: a short, clean counterparty name a person would recognise ("REWE MARKT GMBH 0815 KOELN" -> "REWE", "LYFT *RIDE SUN 9AM" -> "Lyft"). null if unclear.
+- merchant: a short, clean counterparty name a person would recognise ("REWE MARKT GMBH 0815 KOELN" -> "REWE", "LYFT *RIDE SUN 9AM" -> "Lyft"). For chains use the parent brand's full name, without store numbers, locations, payment-processor prefixes or sub-brand suffixes, so every branch and format of a chain gets the same name (e.g. "AH 1234", "AH to go Centraal" and "Albert Heijn XL" are all "Albert Heijn"; "NS GROEP IZ NS REIZIGERS" is "NS"; "SumUp *Bakkerij Jansen" is "Bakkerij Jansen"). null if unclear.
 - currency: 3-letter ISO code of the amount; null if it is the account currency and not shown.
 - balance: the running balance printed on the same row after this transaction, if the statement has a balance column; otherwise null.
 - bank, account (IBAN or account name/number), currency, period_start, period_end, opening_balance, closing_balance: fill these in if this part of the statement shows them, otherwise null. If the bank name isn't printed, infer it from the account's IBAN bank code or the BIC. PDF text can put a block of labels first and their values after it in the same order (e.g. four labels "starting balance, ending balance, total in, total out" followed by four amounts); pair them up by position. You may be given only part of a long statement; that is fine.`;
@@ -90,13 +98,16 @@ async function run(
 		max_completion_tokens: opts.maxTokens,
 		temperature: 0,
 	})) as {
-		choices?: { message?: { content?: unknown } }[];
+		choices?: { message?: { content?: unknown }; finish_reason?: string }[];
 		response?: unknown;
 		usage?: Record<string, unknown>;
 	};
 	console.log(JSON.stringify({ event: "ai_usage", task, model: MODEL, effort: opts.effort, usage: result.usage ?? null }));
 	const content = result.choices?.[0]?.message?.content ?? result.response;
 	const text = typeof content === "string" ? content : content == null ? "" : JSON.stringify(content);
+	if (result.choices?.[0]?.finish_reason === "length") {
+		throw new Error(`${MODEL} hit the output limit (${opts.maxTokens} tokens) before answering (${task}, reasoning ${opts.effort}).`);
+	}
 	if (!text.trim()) throw new Error(`Empty response from ${MODEL} (${task})`);
 	return text;
 }

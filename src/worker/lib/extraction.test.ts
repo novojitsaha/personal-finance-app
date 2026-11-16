@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	accountKey,
 	categorizeItems,
 	chunkText,
 	fixSignsFromRunningBalance,
@@ -10,6 +11,8 @@ import {
 	mergeChunks,
 	normalizeCategory,
 	normalizeDescription,
+	overlapMatch,
+	pairNearDuplicates,
 	parseCategorization,
 	parseChunkExtraction,
 	prepareStatementText,
@@ -104,24 +107,34 @@ describe("reconcile", () => {
 
 describe("dedupeHashes", () => {
 	const tx = (amount = -4.6, date = "2026-09-15") => ({ date, amount });
+	const ing = (account: string | null, bank: string | null = "ING", currency: string | null = "EUR") =>
+		accountKey({ account, bank, currency });
 
 	it("keeps identical transactions within one statement apart", async () => {
-		const [a, b] = await dedupeHashes("NL91 INGB 0004 3862 74", [tx(), tx()]);
+		const [a, b] = await dedupeHashes(ing("NL91 INGB 0004 3862 74"), [tx(), tx()]);
 		expect(a).not.toBe(b);
 	});
 
-	it("matches the same transactions in an overlapping statement, regardless of account formatting", async () => {
-		const first = await dedupeHashes("NL91INGB0004386274", [tx(), tx(), tx(-1250)]);
-		const second = await dedupeHashes("nl91 ingb 0004 3862 74", [tx(), tx()]);
+	it("matches the same transactions in an overlapping statement, however the account is printed", async () => {
+		const first = await dedupeHashes(ing("NL91INGB0004386274"), [tx(), tx(), tx(-1250)]);
+		const second = await dedupeHashes(ing("IBAN: nl91 ingb 0004 3862 74 (J. Jansen)", "ING Bank N.V."), [tx(), tx()]);
 		expect(second).toEqual(first.slice(0, 2));
 	});
 
-	it("differs per account, date and amount", async () => {
-		const [a] = await dedupeHashes("NL01", [tx()]);
-		const [b] = await dedupeHashes("NL02", [tx()]);
-		const [c] = await dedupeHashes("NL01", [tx(-4.61)]);
-		const [d] = await dedupeHashes("NL01", [tx(-4.6, "2026-09-16")]);
-		expect(new Set([a, b, c, d]).size).toBe(4);
+	it("differs per account, currency, date and amount", async () => {
+		const hashes = await Promise.all([
+			dedupeHashes(ing("NL91INGB0004386274"), [tx()]),
+			dedupeHashes(ing("NL02INGB0000000002"), [tx()]),
+			dedupeHashes(ing("NL91INGB0004386274", "ING", "USD"), [tx()]),
+			dedupeHashes(ing("NL91INGB0004386274"), [tx(-4.61)]),
+			dedupeHashes(ing("NL91INGB0004386274"), [tx(-4.6, "2026-09-16")]),
+		]);
+		expect(new Set(hashes.map((h) => h[0])).size).toBe(5);
+	});
+
+	it("falls back to bank + account name without an IBAN", () => {
+		expect(accountKey({ account: "Current Account", bank: "Revolut", currency: "EUR" })).toBe("REVOLUT:CURRENTACCOUNT|EUR");
+		expect(accountKey({ account: "current account", bank: "revolut", currency: "eur" })).toBe("REVOLUT:CURRENTACCOUNT|EUR");
 	});
 });
 
@@ -210,5 +223,50 @@ describe("chunking and detection", () => {
 			})),
 		]);
 		expect([merged.period_start, merged.period_end]).toEqual(["2026-08-01", "2026-10-20"]);
+	});
+});
+
+describe("overlap safeguards", () => {
+	const tx = (date: string, amount: number) => ({ date, amount });
+
+	it("measures how well two statements line up in their overlap", () => {
+		const fresh = [tx("2026-10-01", -10), tx("2026-10-02", -20), tx("2026-10-02", -20), tx("2026-10-05", -30), tx("2026-11-01", -5)];
+		const existing = [tx("2026-09-30", -1), tx("2026-10-01", -10), tx("2026-10-02", -20), tx("2026-10-05", -30)];
+		expect(overlapMatch(fresh, existing, "2026-10-01", "2026-10-31")).toEqual({ rows: 4, matched: 3, ratio: 0.75 });
+	});
+
+	const row = (date: string, amount: number, merchant: string, description = merchant.toUpperCase()) => ({ date, amount, merchant, description });
+	const storedTx = (id: string, date: string, amount: number, merchant: string, period = ["2026-10-01", "2026-10-31"], hash = `h-${id}`) => ({
+		id,
+		date,
+		amount,
+		merchant,
+		description: merchant.toUpperCase(),
+		dedupe_hash: hash,
+		period_start: period[0],
+		period_end: period[1],
+	});
+	const newPeriod = { start: "2026-10-01", end: "2026-11-30" };
+
+	it("pairs the same payment read with a slightly different date", () => {
+		const fresh = [row("2026-10-03", -12.5, "Albert Heijn", "AH 1234 AMSTERDAM")];
+		const existing = [storedTx("a", "2026-10-02", -12.5, "Albert Heijn")];
+		expect([...pairNearDuplicates(fresh, ["new"], existing, newPeriod)]).toEqual([[0, "a"]]);
+	});
+
+	it("keeps identical coffees on consecutive days when one day is outside the earlier statement", () => {
+		// Earlier statement: Oct 1-31 with a coffee on 31 Oct. New statement Oct 1 - Nov 30 has
+		// that coffee (exact hash match) and another identical one on 1 Nov.
+		const existing = [storedTx("c31", "2026-10-31", -4.6, "Starbucks", ["2026-10-01", "2026-10-31"], "h-oct31")];
+		const fresh = [row("2026-10-31", -4.6, "Starbucks"), row("2026-11-01", -4.6, "Starbucks")];
+		expect(pairNearDuplicates(fresh, ["h-oct31", "h-nov1"], existing, newPeriod).size).toBe(0);
+		// Even if the 31 Oct coffee had been read differently, 1 Nov is outside the overlap.
+		expect(pairNearDuplicates([row("2026-11-01", -4.6, "Starbucks")], ["h-nov1"], existing, newPeriod).size).toBe(0);
+	});
+
+	it("never pairs different merchants or two new rows with one stored transaction", () => {
+		const existing = [storedTx("a", "2026-10-03", -9.99, "Spotify")];
+		expect(pairNearDuplicates([row("2026-10-03", -9.99, "Netflix")], ["x"], existing, newPeriod).size).toBe(0);
+		expect(pairNearDuplicates([row("2026-10-03", -9.99, "Spotify"), row("2026-10-04", -9.99, "Spotify")], ["x", "y"], existing, newPeriod).size).toBe(1);
 	});
 });

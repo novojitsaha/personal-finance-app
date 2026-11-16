@@ -144,8 +144,8 @@ async function ingLike(tx, meta) {
 	page.drawText(`Beginsaldo per ${nlDate(meta.start)}`, { x: 110, y, size: 9, font });
 	rightText(page, nl(meta.opening), 555, y, 9, font);
 	y -= 18;
-	tx.forEach((t, i) => {
-		if (i === 18) {
+	tx.forEach((t) => {
+		if (y < 90) {
 			page.drawText("Vervolg op volgende pagina", { x: 40, y: 40, size: 8, font });
 			page = doc.addPage(A4);
 			header();
@@ -276,6 +276,33 @@ for (const f of fixtures) {
 	await writeFile(new URL(f.file, OUT), bytes);
 	await writeFile(new URL(`expected/${f.file.replace(/\.pdf$/, ".json")}`, OUT), JSON.stringify(f.meta, null, "\t") + "\n");
 	console.log(`${f.file}: ${f.meta.transactions.length} transactions, opening ${f.meta.opening}, closing ${f.meta.closing}`);
+}
+
+// Overlapping statements of ONE account, as when downloading Sep-Oct and
+// later Oct-Nov: October is in both. 14 Oct has two identical NS charges,
+// which must be kept as two transactions but not doubled by the overlap.
+{
+	const account = "NL20INGB0001234599";
+	const months = [9, 10, 11].map((m, i) => buildTransactions(55 + i, 2026, m, 24));
+	months[1].splice(
+		months[1].findIndex((t) => t.date > "2026-10-14"),
+		0,
+		...[0, 1].map(() => ({ date: "2026-10-14", description: "NS GROEP IZ NS REIZIGERS", merchant: "NS", category: "Transport", acceptable: ["Transport"], amount: -3.4 })),
+	);
+	const sum = (list) => round2(list.reduce((a, t) => a + t.amount, 0));
+	const opening = 1840.25;
+	const afterSep = round2(opening + sum(months[0]));
+	const parts = [
+		{ file: "overlap-ing-2026-09-10.pdf", tx: [...months[0], ...months[1]], start: "2026-09-01", end: "2026-10-31", opening },
+		{ file: "overlap-ing-2026-10-11.pdf", tx: [...months[1], ...months[2]], start: "2026-10-01", end: "2026-11-30", opening: afterSep },
+	];
+	await mkdir(new URL("overlap/", OUT), { recursive: true });
+	for (const p of parts) {
+		const meta = { bank: "ING", account, holder: "J. Jansen", currency: "EUR", start: p.start, end: p.end, opening: p.opening, closing: round2(p.opening + sum(p.tx)), transactions: p.tx };
+		await writeFile(new URL(`overlap/${p.file}`, OUT), await ingLike(p.tx, { ...meta, account: "NL20 INGB 0001 2345 99" }));
+		await writeFile(new URL(`overlap/${p.file.replace(/\.pdf$/, ".json")}`, OUT), JSON.stringify({ ...meta, months: { "2026-09": months[0].length, "2026-10": months[1].length, "2026-11": months[2].length } }, null, "\t") + "\n");
+		console.log(`overlap/${p.file}: ${p.tx.length} transactions (${p.start} to ${p.end})`);
+	}
 }
 
 // Scanned statement: a separate Revolut-like statement (other account and
