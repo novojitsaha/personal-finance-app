@@ -51,8 +51,8 @@ const effortFor = (task: keyof typeof EFFORT, attempt: number): ReasoningEffort 
  */
 export const CHUNK_CHARS = 6_000;
 
-/** Items per categorization call. */
-export const CATEGORIZE_BATCH = 60;
+/** Items per categorization call (calls run in parallel; smaller is faster). */
+export const CATEGORIZE_BATCH = 25;
 
 const GUIDANCE = `supermarkets, butchers, greengrocers, markets -> Groceries; cafes, bakeries, snack bars -> Coffee & Snacks; restaurants and food delivery -> Restaurants; clothing, shoes and fashion stores (including fashion chains) -> Clothing & Fashion; department stores, online marketplaces, electronics, home goods, drugstores -> Shopping; bars, pubs, clubs (in Dutch and Belgian statements "café" or "cafe" usually means a pub) -> Bars & Nightlife; trains, public transport, taxis, ride hailing, fuel, parking -> Transport; flights, hotels, holiday rentals -> Travel; rent, mortgage, housing association -> Rent & Housing; energy, water, internet, mobile phone -> Utilities; streaming, software, cloud hosting, email, AI tools, news and other online services -> Subscriptions; gym, sports clubs and courts, pharmacy, doctor, health insurance, hairdressers and personal care -> Health & Fitness; cinema, concerts, games, events -> Entertainment; courses, books for study, tuition -> Education; charities, gifts -> Gifts & Donations; bank fees, interest charged, penalties -> Fees & Charges; moves between the holder's own accounts, savings transfers, and payments to or from other people (peer-to-peer payments and payment requests such as Tikkie, PayPal or Revolut transfers to friends, even when the description mentions what it was for) -> Transfers; salary, wages, benefits, interest received, tax refunds -> Income; anything else -> Other.`;
 

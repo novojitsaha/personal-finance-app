@@ -94,20 +94,29 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 		// 4. Categories. The user's "always use this category for this merchant"
 		//    overrides win; every other unique counterparty is categorized once
 		//    by the model, in parallel batches.
-		const fixed = await step.do("load category overrides", DB_RETRY, async () => {
-			const [aliases, variants, overrides] = await this.env.DB.batch([
+		// Categories that need no AI: the user's merchant overrides first, then
+		// the category this merchant (same direction of money) already has from
+		// earlier uploads, so a merchant keeps one category and re-uploads or
+		// familiar merchants cost no AI calls.
+		const fixed = await step.do("load known categories", DB_RETRY, async () => {
+			const [aliases, variants, overrides, known] = await this.env.DB.batch([
 				this.env.DB.prepare("SELECT alias_key, canonical_key, canonical_name FROM merchant_aliases"),
 				this.env.DB.prepare("SELECT variant_key, merchant_name FROM merchant_variant_rules"),
 				this.env.DB.prepare("SELECT merchant_key, category FROM merchant_overrides"),
+				this.env.DB.prepare(
+					`SELECT merchant_key, amount < 0 AS out, category, category_source, MAX(created_at) AS latest
+					 FROM transactions GROUP BY merchant_key, amount < 0`,
+				),
 			]);
 			// Resolve each new transaction's merchant the way the app shows it
 			// (split variants, renames, merges), then look up the override.
+			const rawKeys = extraction.transactions.map((t) => merchantKey(t.merchant, t.description));
 			const resolved = resolveMerchants(
 				extraction.transactions.map((t, i) => ({
 					...t,
 					id: String(i),
 					statement_id: statementId,
-					merchant_key: merchantKey(t.merchant, t.description),
+					merchant_key: rawKeys[i],
 					currency: t.currency,
 					category: "Other" as Category,
 					category_source: "ai" as const,
@@ -115,8 +124,18 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 				aliases.results as unknown as Alias[],
 				variants.results as unknown as VariantRule[],
 			);
-			const byKey = new Map((overrides.results as { merchant_key: string; category: Category }[]).map((o) => [o.merchant_key, o.category]));
-			return resolved.map((t) => byKey.get(t.merchant_key) ?? null);
+			const byOverride = new Map((overrides.results as { merchant_key: string; category: Category }[]).map((o) => [o.merchant_key, o.category]));
+			const byHistory = new Map(
+				(known.results as { merchant_key: string; out: number; category: Category; category_source: "ai" | "user" }[]).map((k) => [
+					`${k.merchant_key}|${k.out ? 1 : 0}`,
+					{ category: k.category, source: k.category_source },
+				]),
+			);
+			return resolved.map((t, i) => {
+				const override = byOverride.get(t.merchant_key);
+				if (override) return { category: override, source: "user" as const };
+				return byHistory.get(`${rawKeys[i]}|${extraction.transactions[i].amount < 0 ? 1 : 0}`) ?? null;
+			});
 		});
 		const toCategorize = extraction.transactions.filter((_, i) => !fixed[i]);
 		const { items, itemOf } = categorizeItems(toCategorize);
@@ -134,10 +153,8 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 		);
 		let next = 0;
 		const categorized = extraction.transactions.map((_, i) => {
-			const fixedCategory = fixed[i];
-			return fixedCategory
-				? { category: fixedCategory, source: "user" as const }
-				: { category: categoryById[itemOf[next++]] ?? ("Other" as Category), source: "ai" as const };
+			const known = fixed[i];
+			return known ?? { category: categoryById[itemOf[next++]] ?? ("Other" as Category), source: "ai" as const };
 		},
 		);
 

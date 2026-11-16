@@ -16,6 +16,16 @@ The deployed app is served only on a custom domain behind Cloudflare Access. `wo
 
 ## How statement processing works
 
+**bunq and Revolut statements are read without AI.** A deterministic parser in `src/worker/parsers/` takes the PDF's positioned text (unpdf). It reads the columns in code and validates the result:
+- the number of dated rows matches the number of parsed transactions;
+- for bunq, money in and money out match the statement's own totals;
+- for Revolut, every row's running balance follows from the one before;
+- opening balance plus all transactions equals closing balance, to the cent.
+
+If validation fails, or the bank isn't supported, the AI extraction below is used, and the statement records which path was taken (`extraction_method`). AI is then only used to categorize merchants it hasn't seen before. Merchants keep the category they already have. To add a bank, implement `BankParser` (`detect()` and `parse()`) and register it in `src/worker/parsers/index.ts`.
+
+The steps below are the AI path.
+
 1. **Upload** (`POST /api/statements`, multipart): the browser checks the PDF with [pdf.js](https://mozilla.github.io/pdf.js/). If it has no text layer (a scan), the browser renders up to 10 pages to JPEG and sends them along. The PDF goes to R2 at `statements/{id}.pdf`, a row goes into D1, and a [Workflow](https://developers.cloudflare.com/workflows/) instance starts.
 2. **Text**: [`env.AI.toMarkdown()`](https://developers.cloudflare.com/workers-ai/features/markdown-conversion/) extracts the PDF text. It isn't an AI model and is free for PDFs. For scans, the model transcribes each page image instead.
 3. **Extraction**: the text is split into ~8k-character chunks that the model processes in parallel with a JSON schema (`response_format`). A separate call reads the header: bank, account, period and balances. Output is validated with zod. Signs are corrected from the running balance where the statement prints one. A chunk that returns fewer rows than the text clearly contains is retried with more reasoning effort.
