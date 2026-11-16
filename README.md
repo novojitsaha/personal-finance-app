@@ -59,9 +59,17 @@ Statements API: `GET /api/statements`, `GET /api/statements/:id` (with transacti
   - A recurring charge that went up.
   - Bank fees.
 
+## Chat
+
+The **Chat** page answers questions about your money ("How much did I spend at Albert Heijn in October?", "Which subscriptions went up?"). It uses Cloudflare's Agents SDK:
+
+- **One `ChatAgent` Durable Object per conversation** (`src/worker/chat/agent.ts`, an `AIChatAgent`). Messages are stored in its SQLite and stream to the browser over a WebSocket at `/agents/chat-agent/<conversation id>` (behind Access like the rest of the app). The `conversations` table in D1 lists them; chats can be renamed and deleted.
+- **The model answers by calling the read-only finance tools** listed under "MCP server" below. Under each answer, "Used …" expands to show the tool calls and their results. The model can't change data.
+- **Model:** DeepSeek V4.1 Flash with low reasoning (`CHAT_MODEL` in `src/worker/chat/core.ts`). `npm run eval:chat` checks tool calling on 16 questions against the synthetic data (real Workers AI, about $0.01 per run); pass `EVAL_MODELS="@cf/a,@cf/b"` to compare models.
+
 ## AI usage
 
-Every Workers AI call (statement reading, categorization, and from step 4b chat and summaries) is stored in the `ai_usage` table with its tokens and cost. The **AI usage** page (`GET /api/usage`) shows this month's and all-time cost, cost per day or month by feature, chat conversations and questions, and averages per conversation and per statement. There is no spending cap. Prices per model live in `PRICING` in `src/worker/lib/usage.ts`.
+Every Workers AI call (statement reading, categorization, chat) is stored in the `ai_usage` table with its tokens and cost. The **AI usage** page (`GET /api/usage`) shows this month's and all-time cost, cost per day or month by feature, chat conversations and questions, and averages per conversation and per statement. There is no spending cap. Prices per model live in `PRICING` in `src/worker/lib/usage.ts`.
 
 ## MCP server
 
@@ -130,6 +138,8 @@ Apply new D1 migrations first with `npm run db:migrate:remote`. Deploying builds
 Taken with the synthetic data from `npm run seed:local`.
 
 ![Dashboard](docs/screenshots/dashboard.png)
+
+![Chat](docs/screenshots/chat.png)
 
 ![AI usage](docs/screenshots/usage.png)
 

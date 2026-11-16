@@ -29,6 +29,8 @@ const shots = [
 	{ file: "usage.png", path: "/#/usage", size: [1280, 1900] },
 	{ file: "usage-dark.png", path: "/#/usage", size: [1280, 1900], dark: true },
 ];
+// The chat needs an existing conversation: CHAT_ID=<id> node scripts/screenshots.mjs chat.png
+if (process.env.CHAT_ID) shots.push({ file: "chat.png", path: `/#/chat?c=${process.env.CHAT_ID}`, size: [1280, 1100] });
 
 // Optional file names as arguments take only those shots.
 const only = process.argv.slice(2);

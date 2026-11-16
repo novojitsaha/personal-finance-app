@@ -85,7 +85,7 @@ export const TOOLS = [
 	tool({
 		name: "search_transactions",
 		description:
-			"Find transactions by merchant name, category, period, amount or text. Returns the number of matches, the total, and up to `limit` transactions (newest first). Amounts are negative for money out and positive for money in.",
+			"Find transactions by merchant name, category, period, amount or text. Returns the number of matches, the totals, and up to `limit` transactions (newest or largest first). Amounts are negative for money out and positive for money in.",
 		inputSchema: z.object({
 			...period,
 			merchant: z.string().optional().describe("Merchant name or part of it, e.g. 'Albert Heijn'"),
@@ -94,6 +94,7 @@ export const TOOLS = [
 			min_amount: z.number().optional().describe("Minimum absolute amount"),
 			max_amount: z.number().optional().describe("Maximum absolute amount"),
 			text: z.string().optional().describe("Text to look for in the description"),
+			sort: z.enum(["newest", "largest"]).optional().describe("Order of the listed transactions: newest first (default) or largest amount first"),
 			limit: z.number().int().min(1).max(50).optional().describe("Max transactions to list (default 20)"),
 		}),
 		execute(data, q) {
@@ -119,7 +120,7 @@ export const TOOLS = [
 				count: list.length,
 				total_out: r2(out),
 				total_in: r2(inn),
-				transactions: [...list].reverse().slice(0, q.limit ?? 20).map(txOut),
+				transactions: (q.sort === "largest" ? [...list].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)) : [...list].reverse()).slice(0, q.limit ?? 20).map(txOut),
 			};
 		},
 	}),

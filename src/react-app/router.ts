@@ -18,6 +18,8 @@ export function useRoute(): Route {
 	useEffect(() => {
 		const onChange = () => setRoute(parse());
 		window.addEventListener("hashchange", onChange);
+		// A child's effect may have changed the URL before this listener existed.
+		onChange();
 		return () => window.removeEventListener("hashchange", onChange);
 	}, []);
 	return route;

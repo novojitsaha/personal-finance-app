@@ -208,3 +208,4 @@ private/
 
 # Local-only checks against real statements (never commit)
 *.local.test.ts
+chat-eval*.local.json
