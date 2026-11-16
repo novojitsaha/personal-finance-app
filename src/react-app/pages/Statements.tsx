@@ -195,6 +195,11 @@ export function Statements() {
 }
 
 function StatusBadge({ s }: { s: Statement }) {
+	const how = s.extraction_method?.startsWith("parser:")
+		? `Read by the ${s.extraction_method.slice(7)} parser (no AI); AI only for categories`
+		: s.extraction_method === "vision"
+			? "Scanned PDF read with AI (OCR)"
+			: "Read with AI";
 	switch (s.status) {
 		case "uploaded":
 			return <Badge variant="secondary">Queued</Badge>;
@@ -206,8 +211,8 @@ function StatusBadge({ s }: { s: Statement }) {
 			);
 		case "done":
 			return (
-				<Badge variant="outline" className="border-green-600/40 text-green-700 dark:text-green-400">
-					{s.extraction_method === "vision" ? "Done (OCR)" : "Done"}
+				<Badge variant="outline" className="border-green-600/40 text-green-700 dark:text-green-400" title={how}>
+					{s.extraction_method === "vision" ? "Done (OCR)" : s.extraction_method?.startsWith("parser:") ? "Done (parsed)" : "Done"}
 				</Badge>
 			);
 		case "failed":

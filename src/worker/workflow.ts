@@ -1,6 +1,8 @@
 // Durable processing pipeline for an uploaded statement:
-//   PDF in R2 -> text (toMarkdown, or vision model on page images for scans)
-//   -> chunked structured extraction -> validate -> reconcile -> dedupe insert.
+//   PDF in R2 -> deterministic bank parser (bunq, Revolut) if it recognises
+//   and validates the statement; otherwise text (toMarkdown, or vision model on
+//   page images for scans) -> chunked AI extraction -> validate. Then
+//   categorize (AI, per unique merchant) -> reconcile -> dedupe insert.
 // Each step is retried independently; a failure after all retries marks the
 // statement as failed with the error message.
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
@@ -20,8 +22,10 @@ import {
 	normalizeAccount,
 	overlapMatch,
 	pairNearDuplicates,
+	type StatementExtraction,
 	type StoredTransaction,
 } from "./lib/extraction";
+import { parseWithBankParser } from "./parsers";
 import { merchantKey } from "./lib/analytics";
 import { type Alias, type VariantRule, resolveMerchants } from "./lib/merchants";
 
@@ -64,67 +68,27 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 			return row;
 		});
 
-		// 1. Text layer via Workers AI Markdown conversion.
-		const markdown = await step.do("convert pdf to markdown", AI_RETRY, async () => {
+		// 0. Deterministic bank parser (bunq, Revolut): positioned PDF text,
+		//    parsed and validated in code. No AI needed for extraction. If no
+		//    parser recognises the statement, or its checks fail, fall back to
+		//    the AI extraction below.
+		const parsed = await step.do("bank parser", DB_RETRY, async () => {
 			const obj = await this.env.STATEMENTS.get(statement.r2_key);
 			if (!obj) throw new Error(`PDF missing from R2: ${statement.r2_key}`);
-			const blob = new Blob([await obj.arrayBuffer()], { type: "application/pdf" });
-			const result = await this.env.AI.toMarkdown({ name: statement.filename, blob });
-			if (result.format === "error") throw new Error(`PDF conversion failed: ${result.error}`);
-			return result.data.slice(0, MAX_TEXT_CHARS + 1);
+			return parseWithBankParser(await obj.arrayBuffer());
 		});
-		if (markdown.length > MAX_TEXT_CHARS) {
-			throw new Error(`Statement is too long to process (over ${MAX_TEXT_CHARS.toLocaleString()} characters of text).`);
-		}
-
-		// 2. Scanned PDF? Fall back to transcribing the page images the browser
-		//    rendered at upload time.
-		let text = prepareStatementText(markdown);
-		let method: "text" | "vision" = "text";
-		if (!hasUsableText(text)) {
-			const pageKeys = await step.do("list page images", DB_RETRY, async () => {
-				const listed = await this.env.STATEMENTS.list({ prefix: `statements/${statementId}/page-` });
-				return listed.objects.map((o) => o.key).sort((a, b) => pageNumber(a) - pageNumber(b));
-			});
-			if (pageKeys.length === 0) {
-				throw new Error(
-					"This PDF has no readable text layer (it looks scanned) and no page images were uploaded with it. " +
-						"Upload it through the web app, which sends page images for OCR.",
-				);
+		let extraction: StatementExtraction;
+		let method: string;
+		let parserNote: string | null = null;
+		if (parsed.status === "parsed") {
+			extraction = { ...parsed.statement, transactions: parsed.statement.transactions };
+			method = `parser:${parsed.parser}`;
+		} else {
+			if (parsed.status === "failed") {
+				parserNote = `The ${parsed.parser} parser couldn't validate this statement (${parsed.reason}), so AI extraction was used.`;
+				console.log(JSON.stringify({ event: "parser_fallback", parser: parsed.parser, reason: parsed.reason }));
 			}
-			const pages: string[] = [];
-			for (const [i, key] of pageKeys.entries()) {
-				pages.push(
-					await step.do(`transcribe page ${i + 1}`, AI_RETRY, async ({ attempt }) => {
-						const obj = await this.env.STATEMENTS.get(key);
-						if (!obj) throw new Error(`Page image missing from R2: ${key}`);
-						return transcribePage(this.env.AI, await obj.arrayBuffer(), obj.httpMetadata?.contentType ?? "image/jpeg", attempt);
-					}),
-				);
-			}
-			text = pages.map((p, i) => `--- Page ${i + 1} ---\n${p}`).join("\n\n");
-			method = "vision";
-		}
-
-		// 3. Structured extraction: statement header plus one step per chunk,
-		//    all in parallel; a retry uses more reasoning effort.
-		const chunks = chunkText(text, CHUNK_CHARS);
-		const [header, ...results] = await Promise.all([
-			step
-				.do("extract statement header", AI_RETRY, ({ attempt }) =>
-					extractHeader(this.env.AI, headerExcerpt(text), attempt),
-				)
-				.catch(() => null), // optional: chunks carry header fields too
-			...chunks.map((chunk, index) =>
-				step.do(`extract transactions ${index + 1}/${chunks.length}`, AI_RETRY, ({ attempt }) =>
-					// The last attempt accepts a short answer; reconciliation then flags it.
-					extractChunk(this.env.AI, chunk, { index, total: chunks.length }, attempt, attempt <= AI_RETRY.retries.limit),
-				),
-			),
-		]);
-		const extraction = mergeChunks(results as ChunkExtraction[], header);
-		if (extraction.transactions.length === 0) {
-			throw new Error("No transactions were found in this statement.");
+			({ extraction, method } = await this.aiExtract(statementId, statement, step));
 		}
 
 		// 4. Categories. The user's "always use this category for this merchant"
@@ -211,7 +175,7 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 
 		// 6. Reconcile, dedupe and store.
 		await step.do("save transactions", DB_RETRY, async () => {
-			const warning = reconcile(extraction);
+			const warning = [parserNote, reconcile(extraction)].filter(Boolean).join(" ") || null;
 			const hashes = await dedupeHashes(key, extraction.transactions);
 			// Stored transactions of this account in this period, for near-
 			// duplicates (same payment, date read 1-2 days differently); see
@@ -290,6 +254,77 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 		});
 
 		return { method, model: MODEL };
+	}
+
+	/** Text (toMarkdown, or vision on page images) -> chunked AI extraction. */
+	private async aiExtract(
+		statementId: string,
+		statement: { r2_key: string; filename: string },
+		step: WorkflowStep,
+	): Promise<{ extraction: StatementExtraction; method: "text" | "vision" }> {
+		// 1. Text layer via Workers AI Markdown conversion.
+		const markdown = await step.do("convert pdf to markdown", AI_RETRY, async () => {
+			const obj = await this.env.STATEMENTS.get(statement.r2_key);
+			if (!obj) throw new Error(`PDF missing from R2: ${statement.r2_key}`);
+			const blob = new Blob([await obj.arrayBuffer()], { type: "application/pdf" });
+			const result = await this.env.AI.toMarkdown({ name: statement.filename, blob });
+			if (result.format === "error") throw new Error(`PDF conversion failed: ${result.error}`);
+			return result.data.slice(0, MAX_TEXT_CHARS + 1);
+		});
+		if (markdown.length > MAX_TEXT_CHARS) {
+			throw new Error(`Statement is too long to process (over ${MAX_TEXT_CHARS.toLocaleString()} characters of text).`);
+		}
+
+		// 2. Scanned PDF? Fall back to transcribing the page images the browser
+		//    rendered at upload time.
+		let text = prepareStatementText(markdown);
+		let method: "text" | "vision" = "text";
+		if (!hasUsableText(text)) {
+			const pageKeys = await step.do("list page images", DB_RETRY, async () => {
+				const listed = await this.env.STATEMENTS.list({ prefix: `statements/${statementId}/page-` });
+				return listed.objects.map((o) => o.key).sort((a, b) => pageNumber(a) - pageNumber(b));
+			});
+			if (pageKeys.length === 0) {
+				throw new Error(
+					"This PDF has no readable text layer (it looks scanned) and no page images were uploaded with it. " +
+						"Upload it through the web app, which sends page images for OCR.",
+				);
+			}
+			const pages: string[] = [];
+			for (const [i, key] of pageKeys.entries()) {
+				pages.push(
+					await step.do(`transcribe page ${i + 1}`, AI_RETRY, async ({ attempt }) => {
+						const obj = await this.env.STATEMENTS.get(key);
+						if (!obj) throw new Error(`Page image missing from R2: ${key}`);
+						return transcribePage(this.env.AI, await obj.arrayBuffer(), obj.httpMetadata?.contentType ?? "image/jpeg", attempt);
+					}),
+				);
+			}
+			text = pages.map((p, i) => `--- Page ${i + 1} ---\n${p}`).join("\n\n");
+			method = "vision";
+		}
+
+		// 3. Structured extraction: statement header plus one step per chunk,
+		//    all in parallel; a retry uses more reasoning effort.
+		const chunks = chunkText(text, CHUNK_CHARS);
+		const [header, ...results] = await Promise.all([
+			step
+				.do("extract statement header", AI_RETRY, ({ attempt }) =>
+					extractHeader(this.env.AI, headerExcerpt(text), attempt),
+				)
+				.catch(() => null), // optional: chunks carry header fields too
+			...chunks.map((chunk, index) =>
+				step.do(`extract transactions ${index + 1}/${chunks.length}`, AI_RETRY, ({ attempt }) =>
+					// The last attempt accepts a short answer; reconciliation then flags it.
+					extractChunk(this.env.AI, chunk, { index, total: chunks.length }, attempt, attempt <= AI_RETRY.retries.limit),
+				),
+			),
+		]);
+		const extraction = mergeChunks(results as ChunkExtraction[], header);
+		if (extraction.transactions.length === 0) {
+			throw new Error("No transactions were found in this statement.");
+		}
+		return { extraction, method };
 	}
 }
 

@@ -1,0 +1,200 @@
+{
+	"bank": "Revolut",
+	"account": "NL09REVO0123456789",
+	"currency": "EUR",
+	"opening": 640.12,
+	"transactions": [
+		{
+			"date": "2026-09-01",
+			"amount": -1250,
+			"currency": "EUR",
+			"merchant": "De Key"
+		},
+		{
+			"date": "2026-09-02",
+			"amount": -22.18,
+			"currency": "EUR",
+			"merchant": "NS"
+		},
+		{
+			"date": "2026-09-03",
+			"amount": -24.84,
+			"currency": "EUR",
+			"merchant": "Albert Heijn"
+		},
+		{
+			"date": "2026-09-04",
+			"amount": -6.37,
+			"currency": "EUR",
+			"merchant": "Starbucks"
+		},
+		{
+			"date": "2026-09-05",
+			"amount": -49.48,
+			"currency": "EUR",
+			"merchant": "Zara"
+		},
+		{
+			"date": "2026-09-07",
+			"amount": -76.09,
+			"currency": "EUR",
+			"merchant": "Zara"
+		},
+		{
+			"date": "2026-09-08",
+			"amount": -28.51,
+			"currency": "EUR",
+			"merchant": "Uber"
+		},
+		{
+			"date": "2026-09-08",
+			"amount": -50.69,
+			"currency": "EUR",
+			"merchant": "Amazon"
+		},
+		{
+			"date": "2026-09-08",
+			"amount": -321.86,
+			"currency": "EUR",
+			"merchant": "KLM"
+		},
+		{
+			"date": "2026-09-09",
+			"amount": -3.72,
+			"currency": "EUR",
+			"merchant": "Starbucks"
+		},
+		{
+			"date": "2026-09-12",
+			"amount": 22.5,
+			"currency": "EUR",
+			"merchant": "J. de Vries"
+		},
+		{
+			"date": "2026-09-13",
+			"amount": -242.73,
+			"currency": "EUR",
+			"merchant": "KLM"
+		},
+		{
+			"date": "2026-09-13",
+			"amount": -3.54,
+			"currency": "EUR",
+			"merchant": "Coffee Company"
+		},
+		{
+			"date": "2026-09-15",
+			"amount": -52.5,
+			"currency": "EUR",
+			"merchant": "Ziggo"
+		},
+		{
+			"date": "2026-09-16",
+			"amount": -7.87,
+			"currency": "EUR",
+			"merchant": "Jumbo"
+		},
+		{
+			"date": "2026-09-18",
+			"amount": -4.55,
+			"currency": "EUR",
+			"merchant": "Coffee Company"
+		},
+		{
+			"date": "2026-09-18",
+			"amount": -142.75,
+			"currency": "EUR",
+			"merchant": "KLM"
+		},
+		{
+			"date": "2026-09-23",
+			"amount": -31.59,
+			"currency": "EUR",
+			"merchant": "Uber"
+		},
+		{
+			"date": "2026-09-23",
+			"amount": -2.99,
+			"currency": "EUR",
+			"merchant": "Coffee Company"
+		},
+		{
+			"date": "2026-09-24",
+			"amount": 3412.55,
+			"currency": "EUR",
+			"merchant": "Acme BV"
+		},
+		{
+			"date": "2026-09-25",
+			"amount": -300,
+			"currency": "EUR",
+			"merchant": "Savings account"
+		},
+		{
+			"date": "2026-09-25",
+			"amount": -83.95,
+			"currency": "EUR",
+			"merchant": "Amazon"
+		},
+		{
+			"date": "2026-09-28",
+			"amount": -25.5,
+			"currency": "EUR",
+			"merchant": "NS"
+		},
+		{
+			"date": "2026-09-29",
+			"amount": -17.88,
+			"currency": "EUR",
+			"merchant": "NS"
+		},
+		{
+			"date": "2026-09-30",
+			"amount": -3.65,
+			"currency": "EUR",
+			"merchant": "Bank fees"
+		},
+		{
+			"date": "2026-09-30",
+			"amount": -128.95,
+			"currency": "EUR",
+			"merchant": "Vattenfall"
+		},
+		{
+			"date": "2026-09-01",
+			"amount": -125,
+			"currency": "USD",
+			"merchant": "De Key"
+		},
+		{
+			"date": "2026-09-12",
+			"amount": 2.25,
+			"currency": "USD",
+			"merchant": "J. de Vries"
+		},
+		{
+			"date": "2026-09-21",
+			"amount": -2.82,
+			"currency": "USD",
+			"merchant": "Apotheek De Magere Brug"
+		},
+		{
+			"date": "2026-09-24",
+			"amount": 341.26,
+			"currency": "USD",
+			"merchant": "Acme BV"
+		},
+		{
+			"date": "2026-09-25",
+			"amount": -30,
+			"currency": "USD",
+			"merchant": "Savings account"
+		},
+		{
+			"date": "2026-09-30",
+			"amount": -0.36,
+			"currency": "USD",
+			"merchant": "Bank fees"
+		}
+	]
+}
