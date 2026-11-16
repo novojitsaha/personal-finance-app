@@ -501,6 +501,26 @@ export interface StoredTransaction {
 	date: string;
 	amount: number;
 	dedupe_hash: string;
+	merchant: string | null;
+	description: string;
+	/** Period covered by the stored transaction's statement(s). */
+	period_start: string;
+	period_end: string;
+}
+
+type Row = { date: string; amount: number; merchant?: string | null; description?: string };
+
+/** Same merchant, or descriptions that share most of their words. */
+export function similarCounterparty(a: Row, b: Row): boolean {
+	const ma = normalizeDescription(a.merchant ?? "");
+	const mb = normalizeDescription(b.merchant ?? "");
+	if (ma && ma === mb) return true;
+	const words = (r: Row) => new Set(normalizeDescription(`${r.merchant ?? ""} ${r.description ?? ""}`).split(" ").filter((w) => w.length > 1 && !/^\d+$/.test(w)));
+	const wa = words(a);
+	const wb = words(b);
+	if (!wa.size || !wb.size) return false;
+	const shared = [...wa].filter((w) => wb.has(w)).length;
+	return shared / Math.min(wa.size, wb.size) >= 0.6;
 }
 
 const dayDiff = (a: string, b: string) => Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
@@ -532,17 +552,20 @@ export function overlapMatch(
 
 /**
  * Near-duplicates: new transactions without an exact dedupe_hash match are
- * paired one-to-one with stored transactions of the same account that have
- * the same amount and a date at most `maxDays` apart, and that no new row
- * matched exactly. Catches the same payment read with a slightly different
- * date (booking vs value date) from two overlapping PDFs, without merging
- * genuinely separate payments (each stored transaction pairs at most once).
- * Returns new-row index -> stored transaction id.
+ * paired one-to-one with stored transactions of the same account when ALL of:
+ * - both dates fall inside the period covered by both statements (the overlap),
+ * - the amount is the same and the dates are at most `maxDays` apart,
+ * - the counterparty is similar (same merchant or mostly the same words),
+ * - the stored transaction wasn't matched exactly by another new row.
+ * Catches the same payment read with a slightly different date (booking vs
+ * value date) from two overlapping PDFs, without merging genuinely separate
+ * payments. Returns new-row index -> stored transaction id.
  */
 export function pairNearDuplicates(
-	fresh: { date: string; amount: number }[],
+	fresh: Row[],
 	hashes: string[],
 	existing: StoredTransaction[],
+	period: { start: string; end: string },
 	maxDays = 2,
 ): Map<number, string> {
 	const exact = new Set(hashes);
@@ -556,8 +579,12 @@ export function pairNearDuplicates(
 		let best: (typeof free)[number] | null = null;
 		for (const e of free) {
 			if (e.used || !sameAmount(e.amount, t.amount)) continue;
+			const from = e.period_start > period.start ? e.period_start : period.start;
+			const to = e.period_end < period.end ? e.period_end : period.end;
+			if (t.date < from || t.date > to || e.date < from || e.date > to) continue;
 			const d = dayDiff(e.date, t.date);
-			if (d <= maxDays && (!best || d < dayDiff(best.date, t.date))) best = e;
+			if (d > maxDays || !similarCounterparty(t, e)) continue;
+			if (!best || d < dayDiff(best.date, t.date)) best = e;
 		}
 		if (best) {
 			best.used = true;

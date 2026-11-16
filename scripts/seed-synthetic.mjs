@@ -124,9 +124,9 @@ for (const st of statements) {
 		`INSERT INTO statements (id, r2_key, filename, size_bytes, page_count, bank, account_iban_or_name, account_key, currency, period_start, period_end, status, extraction_method, transaction_count, inserted_count, uploaded_at, processed_at) VALUES (${[
 			st.id, `statements/${st.id}.pdf`, st.name, 48213, 2, st.acct.bank, st.acct.account, st.acct.key, "EUR", st.from, st.to, "done", "text", st.count, st.inserted, `${st.to}T09:00:00.000Z`, `${st.to}T09:01:00.000Z`,
 		].map(q).join(", ")});`,
-		...st.links.map((t) => `INSERT INTO statement_transactions (statement_id, transaction_id) VALUES (${q(st.id)}, ${q(t.id)});`),
 	);
 }
+const links = statements.flatMap((st) => st.links.map((t) => `INSERT INTO statement_transactions (statement_id, transaction_id) VALUES (${q(st.id)}, ${q(t.id)});`));
 for (const t of txs) {
 	sql.push(
 		`INSERT INTO transactions (id, statement_id, date, description, merchant, amount, currency, category, category_source, dedupe_hash) VALUES (${[
@@ -134,6 +134,7 @@ for (const t of txs) {
 		].map(q).join(", ")});`,
 	);
 }
+sql.push(...links);
 sql.push(
 	"INSERT INTO merchant_aliases (alias_key, canonical_key, canonical_name) VALUES ('ah', 'albert heijn', 'Albert Heijn'), ('ah to go', 'albert heijn', 'Albert Heijn');",
 	"INSERT INTO recurring_rules (merchant_key, merchant, amount, tolerance, category) VALUES ('de key', 'De Key', 1250, 0.1, 'Rent & Housing'), ('netflix', 'Netflix', 13.99, 0.15, 'Subscriptions'), ('basic-fit', 'Basic-Fit', 29.99, 0.1, 'Health & Fitness'), ('ziggo', 'Ziggo', 52.5, 0.1, 'Utilities');",

@@ -213,17 +213,22 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 		await step.do("save transactions", DB_RETRY, async () => {
 			const warning = reconcile(extraction);
 			const hashes = await dedupeHashes(key, extraction.transactions);
-			// Stored transactions of this account around this period, for
-			// near-duplicates (same payment, date read 1-2 days differently).
+			// Stored transactions of this account in this period, for near-
+			// duplicates (same payment, date read 1-2 days differently); see
+			// pairNearDuplicates() for the rules.
 			const { results: stored } = await this.env.DB.prepare(
-				`SELECT t.id, t.date, t.amount, t.dedupe_hash FROM transactions t
-				 WHERE t.date BETWEEN date(?, '-2 days') AND date(?, '+2 days')
-				   AND EXISTS (SELECT 1 FROM statement_transactions st JOIN statements s ON s.id = st.statement_id
-				               WHERE st.transaction_id = t.id AND s.account_key = ? AND s.id != ?)`,
+				`SELECT t.id, t.date, t.amount, t.dedupe_hash, t.merchant, t.description,
+				        MIN(s.period_start) AS period_start, MAX(s.period_end) AS period_end
+				 FROM transactions t
+				 JOIN statement_transactions st ON st.transaction_id = t.id
+				 JOIN statements s ON s.id = st.statement_id
+				 WHERE s.account_key = ? AND s.id != ? AND t.date BETWEEN ? AND ?
+				 GROUP BY t.id`,
 			)
-				.bind(periodStart, periodEnd, key, statementId)
+				.bind(key, statementId, periodStart, periodEnd)
 				.all<StoredTransaction>();
-			const near = pairNearDuplicates(extraction.transactions, hashes, stored);
+			const near = pairNearDuplicates(extraction.transactions, hashes, stored, { start: periodStart, end: periodEnd });
+			if (near.size) console.log(JSON.stringify({ event: "near_duplicates", statement: statementId, paired: near.size }));
 			const insert = this.env.DB.prepare(
 				`INSERT INTO transactions (id, statement_id, date, description, merchant, amount, currency, category, category_source, dedupe_hash)
 				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -281,7 +286,7 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 			);
 			const results = await this.env.DB.batch([...inserts, update]);
 			const inserted = (results.at(-1)?.results?.[0] as { inserted_count: number } | undefined)?.inserted_count ?? 0;
-			return { inserted, warning };
+			return { inserted, warning, near_duplicates: near.size };
 		});
 
 		return { method, model: MODEL };

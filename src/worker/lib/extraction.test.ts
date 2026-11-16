@@ -228,7 +228,6 @@ describe("chunking and detection", () => {
 
 describe("overlap safeguards", () => {
 	const tx = (date: string, amount: number) => ({ date, amount });
-	const stored = (id: string, date: string, amount: number, hash = `h-${id}`) => ({ id, date, amount, dedupe_hash: hash });
 
 	it("measures how well two statements line up in their overlap", () => {
 		const fresh = [tx("2026-10-01", -10), tx("2026-10-02", -20), tx("2026-10-02", -20), tx("2026-10-05", -30), tx("2026-11-01", -5)];
@@ -236,18 +235,38 @@ describe("overlap safeguards", () => {
 		expect(overlapMatch(fresh, existing, "2026-10-01", "2026-10-31")).toEqual({ rows: 4, matched: 3, ratio: 0.75 });
 	});
 
-	it("pairs a payment read with a slightly different date, one-to-one", () => {
-		const fresh = [tx("2026-10-03", -12.5), tx("2026-10-10", -4.6), tx("2026-10-10", -4.6)];
-		const hashes = ["new-a", "h-b", "new-c"];
-		const existing = [stored("a", "2026-10-02", -12.5), stored("b", "2026-10-10", -4.6), stored("c", "2026-10-20", -4.6)];
-		// a: same amount 1 day apart -> paired. Row 2 (4.60 on 10 Oct) matches b exactly via its hash;
-		// row 3 has no exact match and the only other 4.60 is 10 days away -> new.
-		expect([...pairNearDuplicates(fresh, hashes, existing)]).toEqual([[0, "a"]]);
+	const row = (date: string, amount: number, merchant: string, description = merchant.toUpperCase()) => ({ date, amount, merchant, description });
+	const storedTx = (id: string, date: string, amount: number, merchant: string, period = ["2026-10-01", "2026-10-31"], hash = `h-${id}`) => ({
+		id,
+		date,
+		amount,
+		merchant,
+		description: merchant.toUpperCase(),
+		dedupe_hash: hash,
+		period_start: period[0],
+		period_end: period[1],
+	});
+	const newPeriod = { start: "2026-10-01", end: "2026-11-30" };
+
+	it("pairs the same payment read with a slightly different date", () => {
+		const fresh = [row("2026-10-03", -12.5, "Albert Heijn", "AH 1234 AMSTERDAM")];
+		const existing = [storedTx("a", "2026-10-02", -12.5, "Albert Heijn")];
+		expect([...pairNearDuplicates(fresh, ["new"], existing, newPeriod)]).toEqual([[0, "a"]]);
 	});
 
-	it("never pairs two new rows with the same stored transaction", () => {
-		const fresh = [tx("2026-10-03", -9.99), tx("2026-10-04", -9.99)];
-		const existing = [stored("a", "2026-10-03", -9.99)];
-		expect(pairNearDuplicates(fresh, ["x", "y"], existing).size).toBe(1);
+	it("keeps identical coffees on consecutive days when one day is outside the earlier statement", () => {
+		// Earlier statement: Oct 1-31 with a coffee on 31 Oct. New statement Oct 1 - Nov 30 has
+		// that coffee (exact hash match) and another identical one on 1 Nov.
+		const existing = [storedTx("c31", "2026-10-31", -4.6, "Starbucks", ["2026-10-01", "2026-10-31"], "h-oct31")];
+		const fresh = [row("2026-10-31", -4.6, "Starbucks"), row("2026-11-01", -4.6, "Starbucks")];
+		expect(pairNearDuplicates(fresh, ["h-oct31", "h-nov1"], existing, newPeriod).size).toBe(0);
+		// Even if the 31 Oct coffee had been read differently, 1 Nov is outside the overlap.
+		expect(pairNearDuplicates([row("2026-11-01", -4.6, "Starbucks")], ["h-nov1"], existing, newPeriod).size).toBe(0);
+	});
+
+	it("never pairs different merchants or two new rows with one stored transaction", () => {
+		const existing = [storedTx("a", "2026-10-03", -9.99, "Spotify")];
+		expect(pairNearDuplicates([row("2026-10-03", -9.99, "Netflix")], ["x"], existing, newPeriod).size).toBe(0);
+		expect(pairNearDuplicates([row("2026-10-03", -9.99, "Spotify"), row("2026-10-04", -9.99, "Spotify")], ["x", "y"], existing, newPeriod).size).toBe(1);
 	});
 });
