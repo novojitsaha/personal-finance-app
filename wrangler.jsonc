@@ -43,6 +43,11 @@
 	// Workers AI has no local simulation; "remote" makes `npm run dev` call the
 	// real models (billed like production use).
 	"ai": { "binding": "AI", "remote": true },
+	// One chat agent (Durable Object with SQLite) per conversation.
+	"durable_objects": {
+		"bindings": [{ "name": "ChatAgent", "class_name": "ChatAgent" }]
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChatAgent"] }],
 	// Durable, retryable processing of uploaded statements.
 	"workflows": [
 		{

@@ -257,3 +257,14 @@ export interface UsageOverview {
 	statements: { count: number; avg_cost: number | null };
 	recent: UsageCall[];
 }
+
+/** GET /api/conversations: chats, most recently used first. */
+export interface Conversation {
+	id: string;
+	title: string;
+	/** Questions asked. */
+	message_count: number;
+	created_at: string;
+	updated_at: string;
+	cost_usd: number;
+}

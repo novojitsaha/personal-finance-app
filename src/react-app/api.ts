@@ -1,4 +1,5 @@
 import type {
+	Conversation,
 	UsageOverview,
 	BudgetOverview,
 	Dashboard,
@@ -71,3 +72,6 @@ export const getBudgets = () => request<BudgetOverview>("/api/budgets");
 export const setBudget = (category: string, amount: number | null) => send<unknown>("PUT", `/api/budgets/${mk(category)}`, { amount });
 
 export const getUsage = () => request<UsageOverview>("/api/usage");
+export const listConversations = () => request<Conversation[]>("/api/conversations");
+export const renameConversation = (id: string, title: string) => send<unknown>("PATCH", `/api/conversations/${id}`, { title });
+export const deleteConversation = (id: string) => request<void>(`/api/conversations/${id}`, { method: "DELETE" });
