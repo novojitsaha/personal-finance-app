@@ -1,5 +1,7 @@
 import type {
 	Conversation,
+	Digest,
+	Memory,
 	UsageOverview,
 	BudgetOverview,
 	Dashboard,
@@ -75,3 +77,8 @@ export const getUsage = () => request<UsageOverview>("/api/usage");
 export const listConversations = () => request<Conversation[]>("/api/conversations");
 export const renameConversation = (id: string, title: string) => send<unknown>("PATCH", `/api/conversations/${id}`, { title });
 export const deleteConversation = (id: string) => request<void>(`/api/conversations/${id}`, { method: "DELETE" });
+export const getDigest = (month: string) => request<{ digest: Digest | null; generating: boolean }>(`/api/digest?month=${month}`);
+export const listMemories = () => request<Memory[]>("/api/memories");
+export const addMemory = (kind: string, text: string) => send<{ id: number }>("POST", "/api/memories", { kind, text });
+export const updateMemory = (id: number, kind: string, text: string) => send<unknown>("PATCH", `/api/memories/${id}`, { kind, text });
+export const deleteMemory = (id: number) => request<void>(`/api/memories/${id}`, { method: "DELETE" });

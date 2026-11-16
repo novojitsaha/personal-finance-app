@@ -26,6 +26,8 @@ import {
 	type StoredTransaction,
 } from "./lib/extraction";
 import { parseWithBankParser } from "./parsers";
+import { bumpDataVersion } from "./lib/cache";
+import { refreshDigests } from "./lib/digest";
 import { merchantKey } from "./lib/analytics";
 import { type Alias, type VariantRule, resolveMerchants } from "./lib/merchants";
 
@@ -274,6 +276,14 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 			const inserted = (results.at(-1)?.results?.[0] as { inserted_count: number } | undefined)?.inserted_count ?? 0;
 			return { inserted, warning, near_duplicates: near.size };
 		});
+		await step.do("bump data version", DB_RETRY, () => bumpDataVersion(this.env.DB));
+
+		// 7. AI summaries of the months this statement covers (best effort: the
+		//    statement is already done; the dashboard regenerates missing ones).
+		const months = [...new Set(extraction.transactions.map((t) => t.date.slice(0, 7)))].sort();
+		await step
+			.do("monthly digests", AI_RETRY, () => refreshDigests({ ai: this.env.AI, db: this.env.DB }, months))
+			.catch((err) => console.error("Digest generation failed", err));
 
 		return { method, model: MODEL };
 	}

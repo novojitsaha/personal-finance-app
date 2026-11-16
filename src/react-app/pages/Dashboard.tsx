@@ -24,6 +24,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useChartMotion } from "@/components/motion";
 import { PageHeader } from "@/components/page-header";
 import { StatCard } from "@/components/stat-card";
+import { AiSummary } from "@/components/ai-summary";
 import { FLAG_LABELS } from "@/components/flag-badges";
 import { getDashboard } from "@/api";
 import { money, monthLabel, percent, formatDate } from "@/format";
@@ -91,6 +92,8 @@ export function Dashboard({ params }: { params: URLSearchParams }) {
 			</PageHeader>
 
 			<KpiCards kpis={data.kpis} previous={data.previous} currency={c} trend={data.trend} period={data.period} />
+
+			{isMonth && <AiSummary month={data.period} />}
 
 			<div className="grid gap-4 md:gap-5 lg:grid-cols-5">
 				<CategoryDonut data={data} className="lg:col-span-2" onSelect={(cat) => navigate("/transactions", { ...(isMonth ? { month: data.period } : {}), category: cat })} />

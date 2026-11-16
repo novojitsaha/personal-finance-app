@@ -255,6 +255,8 @@ export interface UsageOverview {
 	by_day: UsagePeriod[];
 	chat: { conversations: number; messages: number; cost: number; avg_per_conversation: number | null; avg_per_message: number | null };
 	statements: { count: number; avg_cost: number | null };
+	/** Tool calls answered from the cache, per source. */
+	tool_cache: { source: "chat" | "mcp"; calls: number; hits: number; hit_rate: number }[];
 	recent: UsageCall[];
 }
 
@@ -267,4 +269,26 @@ export interface Conversation {
 	created_at: string;
 	updated_at: string;
 	cost_usd: number;
+}
+
+/** GET /api/digest?month=YYYY-MM */
+export interface Digest {
+	month: string;
+	/** Markdown bullets written by the AI. */
+	summary: string;
+	facts: Record<string, unknown>;
+	created_at: string;
+	/** The data changed since it was written; a new one is being generated. */
+	stale: boolean;
+}
+
+export interface Memory {
+	id: number;
+	kind: "goal" | "fact" | "preference" | "note";
+	text: string;
+	source: "ai" | "user";
+	conversation_id: string | null;
+	conversation_title: string | null;
+	created_at: string;
+	updated_at: string;
 }
