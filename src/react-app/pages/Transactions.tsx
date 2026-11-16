@@ -1,9 +1,8 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { Repeat, X } from "lucide-react";
+import { Repeat, X, Search, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +13,7 @@ import { CategorySelect } from "@/components/category-select";
 import { DataTable, SortHeader } from "@/components/data-table";
 import { FlagBadges } from "@/components/flag-badges";
 import { MerchantFilter } from "@/components/merchant-filter";
+import { PageHeader } from "@/components/page-header";
 import { getDashboard, listTransactions, markRecurring } from "@/api";
 import { formatDate, money, monthLabel } from "@/format";
 import { merchantHref, navigate } from "@/router";
@@ -56,7 +56,7 @@ export function transactionColumns(reload: () => void, opts: { merchant?: boolea
 			id: "description",
 			accessorKey: "description",
 			header: "Description",
-			cell: ({ row }) => <span className="block max-w-[320px] truncate text-muted-foreground" title={row.original.description}>{row.original.description}</span>,
+			cell: ({ row }) => <span className="block max-w-[220px] truncate text-muted-foreground 2xl:max-w-[360px]" title={row.original.description}>{row.original.description}</span>,
 		},
 		{
 			accessorKey: "category",
@@ -75,7 +75,7 @@ export function transactionColumns(reload: () => void, opts: { merchant?: boolea
 			accessorKey: "amount",
 			header: ({ column }) => <SortHeader column={column} title="Amount" align="right" />,
 			cell: ({ row }) => (
-				<div className={`text-right font-medium whitespace-nowrap tabular-nums ${row.original.amount > 0 ? "text-green-700 dark:text-green-400" : ""}`}>
+				<div className={`text-right font-medium whitespace-nowrap tabular-nums ${row.original.amount > 0 ? "text-positive" : ""}`}>
 					{money(row.original.amount, row.original.currency)}
 				</div>
 			),
@@ -166,69 +166,76 @@ export function Transactions({ params }: { params: URLSearchParams }) {
 	}, [items]);
 
 	return (
-		<div className="space-y-4">
-			<div>
-				<h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
-				<p className="text-sm text-muted-foreground">All transactions across your statements. Filters are kept in the address bar, so you can bookmark a view.</p>
+		<div className="stagger space-y-4 md:space-y-5">
+			<PageHeader title="Transactions" description="All transactions across your statements. Filters are kept in the address bar, so you can bookmark a view." className="animate-none">
+				{items && (
+					<div className="flex items-center gap-4 text-sm">
+						<span className="text-muted-foreground">
+							<span className="font-semibold text-foreground tabular-nums">{items.total}</span> transactions
+						</span>
+						<span className="tabular-nums">
+							<span className="text-muted-foreground">Out</span> <span className="font-semibold">{money(totals.out)}</span>
+						</span>
+						<span className="tabular-nums">
+							<span className="text-muted-foreground">In</span> <span className="font-semibold text-positive">{money(totals.in)}</span>
+						</span>
+					</div>
+				)}
+			</PageHeader>
+			<div data-slot="card" className="flex flex-wrap items-center gap-2 rounded-xl bg-card p-3 ring-1 ring-foreground/10">
+				<SlidersHorizontal className="mx-1 hidden size-4 text-muted-foreground sm:block" aria-hidden />
+				<div className="relative">
+					<Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+					<Input placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 w-[200px] pl-8 transition-[width,box-shadow] duration-300 focus:w-[260px]" aria-label="Search transactions" />
+				</div>
+	<Select value={filters.month || "all"} onValueChange={(v) => update({ month: v === "all" ? "" : v })}>
+					<SelectTrigger size="sm" className="w-[150px]" aria-label="Month">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="all">All months</SelectItem>
+						{[...months].reverse().map((m) => (
+							<SelectItem key={m} value={m}>
+								{monthLabel(m)}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+				<Select value={filters.category || "all"} onValueChange={(v) => update({ category: v === "all" ? "" : v })}>
+					<SelectTrigger size="sm" className="w-[180px]" aria-label="Category">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="all">All categories</SelectItem>
+						{CATEGORIES.map((c) => (
+							<SelectItem key={c} value={c}>
+								<CategoryDot category={c} /> {c}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+				<MerchantFilter value={filters.merchant ? filters.merchant.split(",") : []} onChange={(keys) => update({ merchant: keys.join(",") })} />
+				<div className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/60">
+					<Checkbox id="recurring" checked={filters.recurring === "1"} onCheckedChange={(v) => update({ recurring: v ? "1" : "" })} />
+					<Label htmlFor="recurring">Recurring</Label>
+				</div>
+				<div className="flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-accent/60">
+					<Checkbox id="flagged" checked={filters.flagged === "1"} onCheckedChange={(v) => update({ flagged: v ? "1" : "" })} />
+					<Label htmlFor="flagged">Flagged</Label>
+				</div>
+				{active && (
+					<Button
+						variant="ghost"
+						size="sm"
+						onClick={() => {
+							setSearch("");
+							navigate("/transactions", {}, true);
+						}}
+					>
+						<X /> Clear
+					</Button>
+				)}
 			</div>
-			<Card>
-				<CardHeader>
-					<CardTitle>Filters</CardTitle>
-					<CardDescription>
-						{items ? `${items.total} transactions · ${money(totals.out)} out · ${money(totals.in)} in` : "Loading…"}
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="flex flex-wrap items-center gap-2">
-					<Input placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} className="h-8 w-[200px]" />
-					<Select value={filters.month || "all"} onValueChange={(v) => update({ month: v === "all" ? "" : v })}>
-						<SelectTrigger size="sm" className="w-[150px]" aria-label="Month">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">All months</SelectItem>
-							{[...months].reverse().map((m) => (
-								<SelectItem key={m} value={m}>
-									{monthLabel(m)}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					<Select value={filters.category || "all"} onValueChange={(v) => update({ category: v === "all" ? "" : v })}>
-						<SelectTrigger size="sm" className="w-[180px]" aria-label="Category">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">All categories</SelectItem>
-							{CATEGORIES.map((c) => (
-								<SelectItem key={c} value={c}>
-									<CategoryDot category={c} /> {c}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					<MerchantFilter value={filters.merchant ? filters.merchant.split(",") : []} onChange={(keys) => update({ merchant: keys.join(",") })} />
-					<div className="flex items-center gap-2 px-1">
-						<Checkbox id="recurring" checked={filters.recurring === "1"} onCheckedChange={(v) => update({ recurring: v ? "1" : "" })} />
-						<Label htmlFor="recurring">Recurring</Label>
-					</div>
-					<div className="flex items-center gap-2 px-1">
-						<Checkbox id="flagged" checked={filters.flagged === "1"} onCheckedChange={(v) => update({ flagged: v ? "1" : "" })} />
-						<Label htmlFor="flagged">Flagged</Label>
-					</div>
-					{active && (
-						<Button
-							variant="ghost"
-							size="sm"
-							onClick={() => {
-								setSearch("");
-								navigate("/transactions", {}, true);
-							}}
-						>
-							<X /> Clear
-						</Button>
-					)}
-				</CardContent>
-			</Card>
 			<DataTable
 				columns={columns}
 				data={items?.rows ?? []}

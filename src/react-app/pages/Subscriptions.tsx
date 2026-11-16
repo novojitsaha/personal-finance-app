@@ -1,5 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { AlertTriangle, Check, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, Trash2, X, CalendarClock, CalendarRange, Repeat, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, LabelList, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
@@ -10,6 +10,9 @@ import { type ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } f
 import { Skeleton } from "@/components/ui/skeleton";
 import { CategoryBadge } from "@/components/category-badge";
 import { DataTable, SortHeader } from "@/components/data-table";
+import { useChartMotion } from "@/components/motion";
+import { PageHeader } from "@/components/page-header";
+import { StatCard } from "@/components/stat-card";
 import { deleteRecurring, dismissSuggestion, getRecurring, markRecurring } from "@/api";
 import { formatDate, money } from "@/format";
 import { merchantHref } from "@/router";
@@ -20,6 +23,7 @@ export function Subscriptions() {
 	const [data, setData] = useState<RecurringOverview | null>(null);
 	const [version, setVersion] = useState(0);
 	const reload = useCallback(() => setVersion((v) => v + 1), []);
+	const motion = useChartMotion();
 	useEffect(() => {
 		getRecurring().then(setData, (e: Error) => toast.error(e.message));
 	}, [version]);
@@ -35,7 +39,7 @@ export function Subscriptions() {
 							{row.original.merchant}
 						</a>
 						{row.original.warnings.map((w) => (
-							<p key={w.code} className="flex items-start gap-1 text-xs text-amber-700 dark:text-amber-400">
+							<p key={w.code} className="flex items-start gap-1 text-xs text-warning">
 								<AlertTriangle className="mt-0.5 size-3 shrink-0" />
 								{w.message}
 							</p>
@@ -84,42 +88,38 @@ export function Subscriptions() {
 		[reload],
 	);
 
-	if (!data) return <Skeleton className="h-96" />;
+	if (!data) {
+		return (
+			<div className="space-y-4">
+				<Skeleton className="h-12 w-80" />
+				<div className="grid gap-4 sm:grid-cols-3">
+					{[0, 1, 2].map((i) => (
+						<Skeleton key={i} className="h-28" />
+					))}
+				</div>
+				<Skeleton className="h-80" />
+			</div>
+		);
+	}
 	const warnings = data.subscriptions.filter((s) => s.warnings.length);
 	const chartRows = data.subscriptions.map((s) => ({ name: s.merchant, monthly: s.monthly, fill: `var(--color-${categoryKey(s.category)})` }));
 	const config = { monthly: { label: "Per month" }, ...categoryChartConfig } satisfies ChartConfig;
 
 	return (
-		<div className="space-y-4">
-			<div>
-				<h1 className="text-2xl font-semibold tracking-tight">Subscriptions & recurring payments</h1>
-				<p className="text-sm text-muted-foreground">
-					Monthly payments you confirmed. New statements are matched automatically (same merchant, amount within 10% of the last charge).
-				</p>
-			</div>
-			<div className="grid gap-4 sm:grid-cols-3">
-				<Card>
-					<CardHeader>
-						<CardDescription>Per month</CardDescription>
-						<CardTitle className="text-2xl tabular-nums">{money(data.monthly_total, data.currency)}</CardTitle>
-					</CardHeader>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardDescription>Per year</CardDescription>
-						<CardTitle className="text-2xl tabular-nums">{money(data.yearly_total, data.currency)}</CardTitle>
-					</CardHeader>
-				</Card>
-				<Card>
-					<CardHeader>
-						<CardDescription>Recurring payments</CardDescription>
-						<CardTitle className="text-2xl tabular-nums">{data.subscriptions.length}</CardTitle>
-					</CardHeader>
-				</Card>
+		<div className="stagger space-y-4 md:space-y-5">
+			<PageHeader
+				title="Subscriptions & recurring payments"
+				description="Monthly payments you confirmed. New statements are matched automatically (same merchant, amount within 10% of the last charge)."
+				className="animate-none"
+			/>
+			<div className="grid gap-4 sm:grid-cols-3 md:gap-5">
+				<StatCard index={0} label="Per month" icon={CalendarClock} value={data.monthly_total} format={(n) => money(n, data.currency)} />
+				<StatCard index={1} label="Per year" icon={CalendarRange} tone="warning" value={data.yearly_total} format={(n) => money(n, data.currency)} />
+				<StatCard index={2} label="Recurring payments" icon={Repeat} tone="positive" value={data.subscriptions.length} format={(n) => String(Math.round(n))} />
 			</div>
 
 			{warnings.length > 0 && (
-				<Alert>
+				<Alert className="border-[color-mix(in_oklch,var(--warning)_40%,transparent)] bg-[color-mix(in_oklch,var(--warning)_8%,transparent)] [&>svg]:text-warning">
 					<AlertTriangle />
 					<AlertTitle>{warnings.length === 1 ? "1 payment needs a look" : `${warnings.length} payments need a look`}</AlertTitle>
 					<AlertDescription>
@@ -147,7 +147,7 @@ export function Subscriptions() {
 								<YAxis dataKey="name" type="category" tickLine={false} axisLine={false} width={112} tickFormatter={(m: string) => (m.length > 16 ? `${m.slice(0, 15)}…` : m)} />
 								<XAxis dataKey="monthly" type="number" hide />
 								<ChartTooltip cursor={false} content={<ChartTooltipContent hideIndicator formatter={(v) => money(Number(v), data.currency)} />} />
-								<Bar dataKey="monthly" radius={4} isAnimationActive={false}>
+								<Bar dataKey="monthly" radius={6} {...motion}>
 									<LabelList dataKey="monthly" position="right" offset={8} className="fill-foreground text-xs" formatter={(v: unknown) => money(Number(v), data.currency)} />
 								</Bar>
 							</BarChart>
@@ -163,7 +163,12 @@ function Suggestions({ items, onChanged }: { items: RecurringSuggestion[]; onCha
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle>Looks recurring</CardTitle>
+				<CardTitle className="flex items-center gap-2">
+					<span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+						<Sparkles className="size-4" />
+					</span>
+					Looks recurring
+				</CardTitle>
 				<CardDescription>Charged a similar amount in 3 or more months. Nothing is marked until you confirm.</CardDescription>
 			</CardHeader>
 			<CardContent>

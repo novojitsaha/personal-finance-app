@@ -19,7 +19,7 @@ export function FlagBadges({ transactionId, flags, onChanged }: { transactionId:
 			{flags.map((f) => (
 				<Tooltip key={f.code}>
 					<TooltipTrigger asChild>
-						<Badge variant="outline" className="gap-1 border-amber-500/50 text-amber-700 dark:text-amber-400">
+						<Badge variant="outline" className="gap-1 border-transparent bg-[color-mix(in_oklch,var(--warning)_15%,transparent)] text-warning">
 							<AlertTriangle className="size-3" />
 							{FLAG_LABELS[f.code]}
 							{onChanged && (

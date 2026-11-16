@@ -3,7 +3,7 @@
 // Multiple (income vs spending), Pie Chart - Donut with Text (categories),
 // Bar Chart - Negative, horizontal (change vs last month) and Bar Chart -
 // Custom Label, horizontal (top merchants).
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowLeftRight, ArrowRight, ArrowUpRight, FileUp, Minus, PartyPopper, PiggyBank, ShoppingBag, TrendingUp } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Label, LabelList, Pie, PieChart, XAxis, YAxis } from "recharts";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,10 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CategoryDot } from "@/components/category-badge";
+import { EmptyState } from "@/components/empty-state";
+import { useChartMotion } from "@/components/motion";
+import { PageHeader } from "@/components/page-header";
+import { StatCard } from "@/components/stat-card";
 import { FLAG_LABELS } from "@/components/flag-badges";
 import { getDashboard } from "@/api";
 import { money, monthLabel, percent, formatDate } from "@/format";
@@ -66,17 +70,13 @@ export function Dashboard({ params }: { params: URLSearchParams }) {
 	if (!data) return <DashboardSkeleton />;
 	if (!data.months.length) {
 		return (
-			<Card>
-				<CardHeader>
-					<CardTitle>No transactions yet</CardTitle>
-					<CardDescription>Upload a bank statement to see your spending.</CardDescription>
-				</CardHeader>
-				<CardFooter>
-					<Button asChild>
-						<a href={href("/statements")}>Upload statements</a>
-					</Button>
-				</CardFooter>
-			</Card>
+			<EmptyState icon={FileUp} title="No transactions yet" description="Upload a bank statement and your spending shows up here, sorted into categories.">
+				<Button asChild>
+					<a href={href("/statements")}>
+						Upload statements <ArrowRight />
+					</a>
+				</Button>
+			</EmptyState>
 		);
 	}
 
@@ -85,32 +85,26 @@ export function Dashboard({ params }: { params: URLSearchParams }) {
 	const txLink = (extra: Record<string, string>) => href("/transactions", { ...(isMonth ? { month: data.period } : {}), ...extra });
 
 	return (
-		<div className="space-y-4">
-			<div className="flex flex-wrap items-center gap-3">
-				<div className="mr-auto">
-					<h1 className="text-2xl font-semibold tracking-tight">{monthLabel(data.period)}</h1>
-					<p className="text-sm text-muted-foreground">
-						Transfers between your own accounts and to friends are left out of spending and income.
-					</p>
-				</div>
+		<div className="stagger space-y-4 md:space-y-5">
+			<PageHeader title={monthLabel(data.period)} description="Transfers between your own accounts and to friends are left out of spending and income." className="animate-none">
 				<PeriodSelect months={data.months} value={data.period} onChange={(v) => navigate("/", { period: v })} />
-			</div>
+			</PageHeader>
 
-			<KpiCards kpis={data.kpis} previous={data.previous} currency={c} />
+			<KpiCards kpis={data.kpis} previous={data.previous} currency={c} trend={data.trend} period={data.period} />
 
-			<div className="grid gap-4 lg:grid-cols-5">
+			<div className="grid gap-4 md:gap-5 lg:grid-cols-5">
 				<CategoryDonut data={data} className="lg:col-span-2" onSelect={(cat) => navigate("/transactions", { ...(isMonth ? { month: data.period } : {}), category: cat })} />
 				<CategoryList data={data} className="lg:col-span-3" link={(cat) => txLink({ category: cat })} />
 			</div>
 
 			<SpendingTrend data={data} />
 
-			<div className="grid gap-4 lg:grid-cols-2">
+			<div className="grid gap-4 md:gap-5 lg:grid-cols-2">
 				<IncomeVsSpending data={data} />
 				{isMonth ? <CategoryChange data={data} /> : <TopMerchants data={data} />}
 			</div>
 
-			<div className="grid gap-4 lg:grid-cols-2">
+			<div className="grid gap-4 md:gap-5 lg:grid-cols-2">
 				{isMonth && <TopMerchants data={data} />}
 				<FlaggedCard data={data} link={txLink({ flagged: "1" })} />
 			</div>
@@ -120,12 +114,16 @@ export function Dashboard({ params }: { params: URLSearchParams }) {
 
 function DashboardSkeleton() {
 	return (
-		<div className="space-y-4">
-			<Skeleton className="h-10 w-64" />
+		<div className="space-y-4 md:space-y-5">
+			<Skeleton className="h-12 w-64" />
 			<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
 				{[0, 1, 2, 3].map((i) => (
 					<Skeleton key={i} className="h-32" />
 				))}
+			</div>
+			<div className="grid gap-4 lg:grid-cols-5">
+				<Skeleton className="h-96 lg:col-span-2" />
+				<Skeleton className="h-96 lg:col-span-3" />
 			</div>
 			<Skeleton className="h-80" />
 		</div>
@@ -145,41 +143,72 @@ function Trend({ value, goodWhenDown }: { value: number | null; goodWhenDown?: b
 	const Icon = flat ? Minus : value > 0 ? ArrowUpRight : ArrowDownRight;
 	const good = flat ? null : goodWhenDown ? value < 0 : value > 0;
 	return (
-		<Badge variant="outline" className={good === null ? "" : good ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}>
+		<Badge
+			variant="outline"
+			className={
+				good === null
+					? "border-transparent bg-muted"
+					: good
+						? "border-transparent bg-[color-mix(in_oklch,var(--positive)_13%,transparent)] text-positive"
+						: "border-transparent bg-[color-mix(in_oklch,var(--negative)_13%,transparent)] text-negative"
+			}
+		>
 			<Icon />
 			{flat ? "0%" : `${value > 0 ? "+" : ""}${(value * 100).toFixed(0)}%`}
 		</Badge>
 	);
 }
 
-function KpiCards({ kpis, previous, currency }: { kpis: DashboardKpis; previous: DashboardKpis | null; currency: string }) {
-	const items = [
-		{ label: "Spent", value: kpis.spent, prev: previous?.spent, goodWhenDown: true, note: "Excludes transfers" },
-		{ label: "Income", value: kpis.income, prev: previous?.income, note: "Salary, interest, refunds" },
-		{ label: "Net", value: kpis.net, prev: previous?.net, note: kpis.net >= 0 ? "Saved this period" : "Spent more than earned" },
-		{
-			label: "Transfers (not counted)",
-			value: kpis.transfers_out,
-			prev: undefined,
-			note: `${money(kpis.transfers_out, currency)} out · ${money(kpis.transfers_in, currency)} in`,
-		},
-	];
+function KpiCards({ kpis, previous, currency, trend, period }: { kpis: DashboardKpis; previous: DashboardKpis | null; currency: string; trend: DashboardData["trend"]; period: string }) {
+	// Sparklines: the months up to the selected one (all months for "All time").
+	const upTo = period === "all" ? trend : trend.filter((m) => m.month <= period);
+	const months = upTo.slice(-8);
+	const fmt = (n: number) => money(n, currency);
+	const vs = (prev: number | undefined) => (prev !== undefined && previous ? ` · vs ${money(prev, currency)} last month` : "");
 	return (
-		<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-			{items.map((k) => (
-				<Card key={k.label} className="@container/card">
-					<CardHeader>
-						<CardDescription>{k.label}</CardDescription>
-						<CardTitle className="text-2xl font-semibold tabular-nums">{money(k.value, currency)}</CardTitle>
-						<CardAction>
-							<Trend value={change(k.value, k.prev)} goodWhenDown={k.goodWhenDown} />
-						</CardAction>
-					</CardHeader>
-					<CardFooter className="text-sm text-muted-foreground">
-						{k.prev !== undefined && previous ? `${k.note} · vs ${money(k.prev, currency)} last month` : k.note}
-					</CardFooter>
-				</Card>
-			))}
+		<div className="grid gap-4 sm:grid-cols-2 md:gap-5 xl:grid-cols-4">
+			<StatCard
+				index={0}
+				label="Spent"
+				icon={ShoppingBag}
+				tone="brand"
+				value={kpis.spent}
+				format={fmt}
+				spark={months.map((m) => m.spent)}
+				badge={<Trend value={change(kpis.spent, previous?.spent)} goodWhenDown />}
+				note={`Excludes transfers${vs(previous?.spent)}`}
+			/>
+			<StatCard
+				index={1}
+				label="Income"
+				icon={TrendingUp}
+				tone="positive"
+				value={kpis.income}
+				format={fmt}
+				spark={months.map((m) => m.income)}
+				badge={<Trend value={change(kpis.income, previous?.income)} />}
+				note={`Salary, interest, refunds${vs(previous?.income)}`}
+			/>
+			<StatCard
+				index={2}
+				label="Net"
+				icon={PiggyBank}
+				tone={kpis.net >= 0 ? "positive" : "negative"}
+				value={kpis.net}
+				format={fmt}
+				spark={months.map((m) => m.income - m.spent)}
+				badge={<Trend value={change(kpis.net, previous?.net)} />}
+				note={`${kpis.net >= 0 ? "Saved this period" : "Spent more than earned"}${vs(previous?.net)}`}
+			/>
+			<StatCard
+				index={3}
+				label="Transfers"
+				icon={ArrowLeftRight}
+				tone="neutral"
+				value={kpis.transfers_out}
+				format={fmt}
+				note={`Not counted · ${money(kpis.transfers_out, currency)} out · ${money(kpis.transfers_in, currency)} in`}
+			/>
 		</div>
 	);
 }
@@ -189,6 +218,7 @@ function KpiCards({ kpis, previous, currency }: { kpis: DashboardKpis; previous:
 const TOP_SLICES = 6;
 
 function CategoryDonut({ data, className, onSelect }: { data: DashboardData; className?: string; onSelect: (category: string) => void }) {
+	const motion = useChartMotion();
 	const { slices, config, total } = useMemo(() => {
 		const top = data.by_category.slice(0, TOP_SLICES);
 		const rest = data.by_category.slice(TOP_SLICES);
@@ -219,9 +249,12 @@ function CategoryDonut({ data, className, onSelect }: { data: DashboardData; cla
 							data={slices}
 							dataKey="amount"
 							nameKey="key"
-							innerRadius={68}
-							strokeWidth={4}
-							isAnimationActive={false}
+							innerRadius={72}
+							outerRadius={104}
+							paddingAngle={2}
+							cornerRadius={5}
+							stroke="none"
+							{...motion}
 							onClick={(s: { payload?: { category?: string } }) => s.payload?.category && onSelect(s.payload.category)}
 							className="cursor-pointer"
 						>
@@ -229,7 +262,7 @@ function CategoryDonut({ data, className, onSelect }: { data: DashboardData; cla
 								content={({ viewBox }) =>
 									viewBox && "cx" in viewBox && "cy" in viewBox ? (
 										<text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
-											<tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-xl font-bold">
+											<tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-xl font-semibold tracking-tight">
 												{money(total, data.currency, { compact: total >= 10000 })}
 											</tspan>
 											<tspan x={viewBox.cx} y={(viewBox.cy ?? 0) + 22} className="fill-muted-foreground text-xs">
@@ -243,7 +276,7 @@ function CategoryDonut({ data, className, onSelect }: { data: DashboardData; cla
 					</PieChart>
 				</ChartContainer>
 			</CardContent>
-			<CardFooter className="flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+			<CardFooter className="flex-wrap gap-x-3 gap-y-1 border-t-0 bg-transparent text-xs text-muted-foreground">
 				{slices.map((s) => (
 					<span key={s.key} className="inline-flex items-center gap-1.5">
 						<span className="size-2.5 rounded-[3px]" style={{ background: `var(--cat-${s.key})`, ...(s.key === "other-categories" ? { background: "var(--muted-foreground)" } : {}) }} />
@@ -274,16 +307,16 @@ function CategoryList({ data, className, link }: { data: DashboardData; classNam
 				<CardDescription>Click a category to see its transactions</CardDescription>
 			</CardHeader>
 			<CardContent>
-				<ul className="space-y-1">
-					{data.by_category.map((cat) => (
-						<li key={cat.category}>
-							<a href={link(cat.category)} className="grid grid-cols-[minmax(0,10rem)_1fr_auto] items-center gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted">
+				<ul className="space-y-0.5">
+					{data.by_category.map((cat, i) => (
+						<li key={cat.category} style={{ "--i": i } as React.CSSProperties}>
+							<a href={link(cat.category)} className="group/row grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5 rounded-lg sm:grid-cols-[minmax(0,10rem)_1fr_auto] px-2 py-1.5 text-sm transition-colors hover:bg-accent/70">
 								<span className="flex items-center gap-2 truncate">
 									<CategoryDot category={cat.category} />
 									<span className="truncate">{cat.category}</span>
 								</span>
-								<span className="h-2 rounded-full bg-muted">
-									<span className="block h-2 rounded-full" style={{ width: `${(cat.amount / max) * 100}%`, background: `var(--cat-${categoryKey(cat.category)})` }} />
+								<span className="order-last col-span-2 h-1.5 overflow-hidden rounded-full bg-muted sm:order-none sm:col-span-1 sm:h-2">
+									<span className="animate-grow-x block h-full rounded-full transition-[filter] group-hover/row:brightness-110" style={{ width: `${(cat.amount / max) * 100}%`, background: `var(--cat-${categoryKey(cat.category)})` }} />
 								</span>
 								<span className="text-right tabular-nums">
 									{money(cat.amount, data.currency)} <span className="inline-block w-12 text-muted-foreground">{percent(cat.share)}</span>
@@ -301,6 +334,7 @@ function CategoryList({ data, className, link }: { data: DashboardData; classNam
 // --- Area Chart - Interactive ----------------------------------------------
 
 function SpendingTrend({ data }: { data: DashboardData }) {
+	const motion = useChartMotion();
 	const [range, setRange] = useState("6");
 	const rows = useMemo(() => {
 		const list = range === "all" ? data.trend : data.trend.slice(-Number(range));
@@ -336,7 +370,7 @@ function SpendingTrend({ data }: { data: DashboardData }) {
 								</linearGradient>
 							))}
 						</defs>
-						<CartesianGrid vertical={false} />
+						<CartesianGrid vertical={false} strokeDasharray="3 3" />
 						<XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} minTickGap={24} tickFormatter={(m) => monthLabel(m, "short")} />
 						<YAxis tickLine={false} axisLine={false} width={56} tickFormatter={(v) => money(v, data.currency, { compact: true })} />
 						<ChartTooltip
@@ -352,7 +386,7 @@ function SpendingTrend({ data }: { data: DashboardData }) {
 								stroke={`var(--color-${groupKey(g.name)})`}
 								strokeWidth={2}
 								stackId="a"
-								isAnimationActive={false}
+								{...motion}
 							/>
 						))}
 						<ChartLegend content={<ChartLegendContent className="flex-wrap" />} />
@@ -378,6 +412,7 @@ const incomeConfig = {
 } satisfies ChartConfig;
 
 function IncomeVsSpending({ data }: { data: DashboardData }) {
+	const motion = useChartMotion();
 	const rows = data.trend.slice(-12);
 	return (
 		<Card>
@@ -385,16 +420,16 @@ function IncomeVsSpending({ data }: { data: DashboardData }) {
 				<CardTitle>Income vs spending</CardTitle>
 				<CardDescription>Per month, transfers excluded</CardDescription>
 			</CardHeader>
-			<CardContent>
-				<ChartContainer config={incomeConfig} className="aspect-auto h-[260px] w-full">
+			<CardContent className="flex flex-1 flex-col">
+				<ChartContainer config={incomeConfig} className="aspect-auto min-h-[260px] w-full flex-1">
 					<BarChart accessibilityLayer data={rows}>
-						<CartesianGrid vertical={false} />
+						<CartesianGrid vertical={false} strokeDasharray="3 3" />
 						<XAxis dataKey="month" tickLine={false} tickMargin={10} axisLine={false} tickFormatter={(m) => monthLabel(m, "short")} />
 						<YAxis tickLine={false} axisLine={false} width={56} tickFormatter={(v) => money(v, data.currency, { compact: true })} />
 						<ChartTooltip cursor={false} content={<ChartTooltipContent indicator="dashed" labelFormatter={(m) => monthLabel(String(m))} formatter={moneyFormatter(data.currency, incomeConfig)} />} />
 						<ChartLegend content={<ChartLegendContent />} />
-						<Bar dataKey="income" fill="var(--color-income)" radius={4} isAnimationActive={false} />
-						<Bar dataKey="spent" fill="var(--color-spent)" radius={4} isAnimationActive={false} />
+						<Bar dataKey="income" fill="var(--color-income)" radius={6} {...motion} />
+						<Bar dataKey="spent" fill="var(--color-spent)" radius={6} {...motion} />
 					</BarChart>
 				</ChartContainer>
 			</CardContent>
@@ -411,6 +446,7 @@ const changeConfig = {
 } satisfies ChartConfig;
 
 function CategoryChange({ data }: { data: DashboardData }) {
+	const motion = useChartMotion();
 	const rows = useMemo(() => {
 		const before = new Map(data.previous_by_category.map((c) => [c.category, c.amount]));
 		const now = new Map(data.by_category.map((c) => [c.category, c.amount]));
@@ -431,14 +467,14 @@ function CategoryChange({ data }: { data: DashboardData }) {
 				{rows.length ? (
 					<ChartContainer config={changeConfig} className="aspect-auto w-full" style={{ height: Math.max(160, rows.length * 34) }}>
 						<BarChart accessibilityLayer data={rows} layout="vertical" margin={{ left: 8, right: 56 }}>
-							<CartesianGrid horizontal={false} />
+							<CartesianGrid horizontal={false} strokeDasharray="3 3" />
 							<XAxis type="number" hide />
 							<YAxis dataKey="category" type="category" tickLine={false} axisLine={false} width={120} />
 							<ChartTooltip
 								cursor={false}
 								content={<ChartTooltipContent hideIndicator formatter={(v) => `${Number(v) > 0 ? "+" : ""}${money(Number(v), data.currency)} vs last month`} />}
 							/>
-							<Bar dataKey="change" radius={4} isAnimationActive={false}>
+							<Bar dataKey="change" radius={6} {...motion}>
 								<LabelList
 									dataKey="change"
 									content={(props) => {
@@ -463,12 +499,12 @@ function CategoryChange({ data }: { data: DashboardData }) {
 					<p className="text-sm text-muted-foreground">No previous month to compare with.</p>
 				)}
 			</CardContent>
-			<CardFooter className="gap-4 text-xs text-muted-foreground">
+			<CardFooter className="gap-4 border-t-0 bg-transparent text-xs text-muted-foreground">
 				<span className="inline-flex items-center gap-1.5">
-					<ArrowUpRight className="size-3.5 text-red-600 dark:text-red-400" /> Spent more
+					<ArrowUpRight className="size-3.5 text-negative" /> Spent more
 				</span>
 				<span className="inline-flex items-center gap-1.5">
-					<ArrowDownRight className="size-3.5 text-green-600 dark:text-green-400" /> Spent less
+					<ArrowDownRight className="size-3.5 text-positive" /> Spent less
 				</span>
 			</CardFooter>
 		</Card>
@@ -484,6 +520,7 @@ function prevMonth(m: string) {
 // --- Bar Chart - Custom Label (horizontal): top merchants ---------------------
 
 function TopMerchants({ data }: { data: DashboardData }) {
+	const motion = useChartMotion();
 	const rows = data.top_merchants.map((m) => ({ ...m, fill: `var(--color-${categoryKey(m.category)})` }));
 	const config = { amount: { label: "Spent" }, ...categoryChartConfig } satisfies ChartConfig;
 	return (
@@ -496,11 +533,11 @@ function TopMerchants({ data }: { data: DashboardData }) {
 				{rows.length ? (
 					<ChartContainer config={config} className="aspect-auto w-full" style={{ height: Math.max(160, rows.length * 38) }}>
 						<BarChart accessibilityLayer data={rows} layout="vertical" margin={{ right: 72 }}>
-							<CartesianGrid horizontal={false} />
+							<CartesianGrid horizontal={false} strokeDasharray="3 3" />
 							<YAxis dataKey="merchant" type="category" tickLine={false} axisLine={false} width={112} tickFormatter={(m: string) => (m.length > 16 ? `${m.slice(0, 15)}…` : m)} />
 							<XAxis dataKey="amount" type="number" hide />
 							<ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" formatter={(v, _n, item) => `${money(Number(v), data.currency)} · ${item.payload.count} payments`} />} />
-							<Bar dataKey="amount" radius={4} isAnimationActive={false} className="cursor-pointer" onClick={(d: { payload?: { merchant_key?: string } }) => d.payload?.merchant_key && (location.hash = merchantHref(d.payload.merchant_key).slice(1))}>
+							<Bar dataKey="amount" radius={6} {...motion} className="cursor-pointer" onClick={(d: { payload?: { merchant_key?: string } }) => d.payload?.merchant_key && (location.hash = merchantHref(d.payload.merchant_key).slice(1))}>
 								<LabelList dataKey="amount" position="right" offset={8} className="fill-foreground text-xs" formatter={(v: unknown) => money(Number(v), data.currency)} />
 							</Bar>
 						</BarChart>
@@ -518,7 +555,10 @@ function FlaggedCard({ data, link }: { data: DashboardData; link: string }) {
 		<Card>
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
-					<AlertTriangle className="size-4 text-amber-600" /> Flagged
+					<span className="flex size-7 items-center justify-center rounded-lg bg-[color-mix(in_oklch,var(--warning)_16%,transparent)] text-warning">
+						<AlertTriangle className="size-4" />
+					</span>
+					Flagged
 				</CardTitle>
 				<CardDescription>
 					{data.flagged.count ? `${data.flagged.count} unusual ${data.flagged.count === 1 ? "charge" : "charges"} to check` : "Nothing unusual"}
@@ -532,7 +572,13 @@ function FlaggedCard({ data, link }: { data: DashboardData; link: string }) {
 				)}
 			</CardHeader>
 			<CardContent>
-				<ul className="divide-y">
+				{data.flagged.count === 0 && (
+					<div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
+						<PartyPopper className="size-6 text-positive" />
+						All clear. No unusual charges in this period.
+					</div>
+				)}
+				<ul className="divide-y divide-border/60">
 					{data.flagged.items.map((t) => (
 						<li key={t.id} className="flex items-start gap-3 py-2.5 text-sm">
 							<div className="min-w-0 flex-1">
@@ -546,7 +592,7 @@ function FlaggedCard({ data, link }: { data: DashboardData; link: string }) {
 									</p>
 								))}
 							</div>
-							<span className="tabular-nums">{money(t.amount, t.currency)}</span>
+							<span className="font-medium tabular-nums">{money(t.amount, t.currency)}</span>
 						</li>
 					))}
 				</ul>
