@@ -1,4 +1,5 @@
 import type {
+	UsageOverview,
 	BudgetOverview,
 	Dashboard,
 	MerchantDetail,
@@ -68,3 +69,5 @@ export const dismissSuggestion = (key: string) => send<void>("POST", `/api/recur
 // Budgets
 export const getBudgets = () => request<BudgetOverview>("/api/budgets");
 export const setBudget = (category: string, amount: number | null) => send<unknown>("PUT", `/api/budgets/${mk(category)}`, { amount });
+
+export const getUsage = () => request<UsageOverview>("/api/usage");

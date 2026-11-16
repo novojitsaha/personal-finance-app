@@ -3,6 +3,7 @@
 //
 //   npm run seed:local && npm run dev      # in another terminal
 //   node scripts/screenshots.mjs           # writes docs/screenshots/*.png
+//   node scripts/screenshots.mjs usage.png # only the named shots
 //
 // Never point this at a database with real statements.
 import { execFileSync } from "node:child_process";
@@ -25,9 +26,13 @@ const shots = [
 	{ file: "budgets.png", path: "/#/budgets?month=2026-10", size: [1280, 1650] },
 	{ file: "statements.png", path: "/#/statements", size: [1280, 1250] },
 	{ file: "dashboard-mobile.png", path: "/#/?period=2026-10", size: [390, 2600] },
+	{ file: "usage.png", path: "/#/usage", size: [1280, 1900] },
+	{ file: "usage-dark.png", path: "/#/usage", size: [1280, 1900], dark: true },
 ];
 
-for (const s of shots) {
+// Optional file names as arguments take only those shots.
+const only = process.argv.slice(2);
+for (const s of shots.filter((x) => !only.length || only.includes(x.file))) {
 	const profile = mkdtempSync(join(tmpdir(), "shot-"));
 	execFileSync(
 		CHROME,

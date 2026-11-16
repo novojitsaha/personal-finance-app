@@ -6,7 +6,7 @@
 // Each step is retried independently; a failure after all retries marks the
 // statement as failed with the error message.
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
-import { CATEGORIZE_BATCH, CHUNK_CHARS, MODEL, categorize, extractChunk, extractHeader, transcribePage } from "./lib/ai";
+import { type AiContext, CATEGORIZE_BATCH, CHUNK_CHARS, MODEL, categorize, extractChunk, extractHeader, transcribePage } from "./lib/ai";
 import type { Category } from "../shared/categories";
 import {
 	type ChunkExtraction,
@@ -55,6 +55,11 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 			});
 			throw err;
 		}
+	}
+
+	/** AI calls record their usage against this statement. */
+	private aiContext(statementId: string): AiContext {
+		return { ai: this.env.AI, db: this.env.DB, statementId };
 	}
 
 	private async process(statementId: string, step: WorkflowStep) {
@@ -146,7 +151,7 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 			...(await Promise.all(
 				batches.map((batch, i) =>
 					step.do(`categorize ${i + 1}/${batches.length}`, AI_RETRY, ({ attempt }) =>
-						categorize(this.env.AI, batch, attempt),
+						categorize(this.aiContext(statementId), batch, attempt),
 					),
 				),
 			)),
@@ -313,7 +318,7 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 					await step.do(`transcribe page ${i + 1}`, AI_RETRY, async ({ attempt }) => {
 						const obj = await this.env.STATEMENTS.get(key);
 						if (!obj) throw new Error(`Page image missing from R2: ${key}`);
-						return transcribePage(this.env.AI, await obj.arrayBuffer(), obj.httpMetadata?.contentType ?? "image/jpeg", attempt);
+						return transcribePage(this.aiContext(statementId), await obj.arrayBuffer(), obj.httpMetadata?.contentType ?? "image/jpeg", attempt);
 					}),
 				);
 			}
@@ -327,13 +332,13 @@ export class StatementWorkflow extends WorkflowEntrypoint<Env, StatementParams> 
 		const [header, ...results] = await Promise.all([
 			step
 				.do("extract statement header", AI_RETRY, ({ attempt }) =>
-					extractHeader(this.env.AI, headerExcerpt(text), attempt),
+					extractHeader(this.aiContext(statementId), headerExcerpt(text), attempt),
 				)
 				.catch(() => null), // optional: chunks carry header fields too
 			...chunks.map((chunk, index) =>
 				step.do(`extract transactions ${index + 1}/${chunks.length}`, AI_RETRY, ({ attempt }) =>
 					// The last attempt accepts a short answer; reconciliation then flags it.
-					extractChunk(this.env.AI, chunk, { index, total: chunks.length }, attempt, attempt <= AI_RETRY.retries.limit),
+					extractChunk(this.aiContext(statementId), chunk, { index, total: chunks.length }, attempt, attempt <= AI_RETRY.retries.limit),
 				),
 			),
 		]);

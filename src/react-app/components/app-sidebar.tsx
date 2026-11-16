@@ -1,4 +1,4 @@
-import { CalendarClock, FileText, LayoutDashboard, PiggyBank, ReceiptText, Wallet } from "lucide-react";
+import { CalendarClock, Cpu, FileText, LayoutDashboard, PiggyBank, ReceiptText, Wallet } from "lucide-react";
 import {
 	Sidebar,
 	SidebarContent,
@@ -18,6 +18,7 @@ export const NAV = [
 	{ path: "/subscriptions", title: "Subscriptions", icon: CalendarClock },
 	{ path: "/budgets", title: "Budgets", icon: PiggyBank },
 	{ path: "/statements", title: "Statements", icon: FileText },
+	{ path: "/usage", title: "AI usage", icon: Cpu },
 ];
 
 export function AppSidebar({ path }: { path: string }) {
