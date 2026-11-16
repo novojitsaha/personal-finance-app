@@ -21,20 +21,61 @@ const textOf = (m: UIMessage) =>
 		.join(" ")
 		.trim();
 
+const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** What the user sees when answering fails, instead of a generic error. */
+const readableError = (e: unknown) => `Sorry, something went wrong while answering (${errorText(e).slice(0, 200)}). Please try again.`;
+
 export class ChatAgent extends AIChatAgent<Env> {
 	maxPersistedMessages = 200;
 
+	/** WebSocket path (useAgentChat): the SDK persists and broadcasts the answer. */
 	async onChatMessage(_onFinish: unknown, options?: OnChatMessageOptions): Promise<Response | undefined> {
 		if (!CONVERSATION_ID.test(this.name)) return new Response("Invalid conversation id", { status: 400 });
+		const result = await this.answer(this.messages, options?.abortSignal);
+		return result.toUIMessageStreamResponse({ sendReasoning: false, onError: readableError });
+	}
+
+	/**
+	 * HTTP path, for networks that block WebSockets (some corporate web filters
+	 * do): POST /agents/chat-agent/<id>/http-chat with the AI SDK chat request
+	 * body; the answer streams back as server-sent events and is saved here, so
+	 * the conversation is the same whichever path was used.
+	 */
+	async onRequest(request: Request): Promise<Response> {
+		const url = new URL(request.url);
+		if (request.method !== "POST" || !url.pathname.endsWith("/http-chat")) return super.onRequest(request);
+		if (!CONVERSATION_ID.test(this.name)) return new Response("Invalid conversation id", { status: 400 });
+		const body = await request.json<{ messages?: UIMessage[] }>().catch(() => ({}) as { messages?: UIMessage[] });
+		const incoming = body.messages?.at(-1);
+		if (!incoming || incoming.role !== "user") return Response.json({ error: "Send a user message." }, { status: 400 });
+		// The server's copy is the source of truth; a retry resends a question it already has.
+		const at = this.messages.findIndex((m) => m.id === incoming.id);
+		const history = at >= 0 ? this.messages.slice(0, at + 1) : [...this.messages, incoming];
+		await this.persistMessages(history);
+		const result = await this.answer(history, request.signal);
+		return result.toUIMessageStreamResponse({
+			sendReasoning: false,
+			originalMessages: history,
+			generateMessageId: () => crypto.randomUUID(),
+			onError: readableError,
+			onFinish: async ({ messages }) => {
+				await this.persistMessages(messages);
+				await this.onChatResponse();
+			},
+		});
+	}
+
+	/** Stream an answer to the last question in `messages`, using the finance tools. */
+	private async answer(messages: UIMessage[], abortSignal?: AbortSignal) {
 		const db = this.env.DB;
-		const lastUser = [...this.messages].reverse().find((m) => m.role === "user");
-		await this.touch();
+		const lastUser = [...messages].reverse().find((m) => m.role === "user");
+		await this.touch(messages);
 		const data = await load(db);
-		const result = streamText({
+		return streamText({
 			model: chatModel(this.env),
 			system: systemPrompt(data, undefined, await chatContext(db, data)),
 			messages: pruneMessages({
-				messages: await convertToModelMessages(this.messages),
+				messages: await convertToModelMessages(messages),
 				// Older tool results are dropped from the model's input to keep it short;
 				// the answers that used them stay.
 				toolCalls: "before-last-4-messages",
@@ -42,15 +83,15 @@ export class ChatAgent extends AIChatAgent<Env> {
 			}),
 			tools: financeTools(db, this.name),
 			stopWhen: stepCountIs(MAX_STEPS),
-			abortSignal: options?.abortSignal,
+			abortSignal,
 			onStepFinish: ({ usage }) => recordStep(db, CHAT_MODEL, usage, { conversationId: this.name, messageId: lastUser?.id }),
+			onError: ({ error }) => console.error(JSON.stringify({ event: "chat_error", conversation: this.name, error: errorText(error) })),
 		});
-		return result.toUIMessageStreamResponse({ sendReasoning: false });
 	}
 
 	/** Keep the conversations list current: title from the first question, count, time. */
-	private async touch() {
-		const first = this.messages.find((m) => m.role === "user");
+	private async touch(messages: UIMessage[]) {
+		const first = messages.find((m) => m.role === "user");
 		const title = first ? textOf(first).replace(/\s+/g, " ").slice(0, 80) || "New chat" : "New chat";
 		await this.env.DB.prepare(
 			`INSERT INTO conversations (id, title, message_count) VALUES (?1, ?2, ?3)
@@ -59,7 +100,7 @@ export class ChatAgent extends AIChatAgent<Env> {
 			   message_count = excluded.message_count,
 			   updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
 		)
-			.bind(this.name, title, this.messages.filter((m) => m.role === "user").length)
+			.bind(this.name, title, messages.filter((m) => m.role === "user").length)
 			.run();
 	}
 

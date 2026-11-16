@@ -1,10 +1,8 @@
 // Chat with your finances. Each conversation is a ChatAgent Durable Object
 // (Cloudflare Agents SDK); useAgentChat streams answers over a WebSocket and
 // loads the saved messages when a conversation is reopened.
-import { useAgentChat } from "@cloudflare/ai-chat/react";
-import { useAgent } from "agents/react";
 import type { UIMessage } from "ai";
-import { ArrowLeft, ArrowUp, ChevronRight, Loader2, MessageSquarePlus, MoreHorizontal, Pencil, Square, Trash2, Wrench } from "lucide-react";
+import { ArrowLeft, ArrowUp, ChevronRight, Loader2, MessageSquarePlus, MoreHorizontal, Pencil, RotateCcw, Square, Trash2, Wrench } from "lucide-react";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,6 +15,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { deleteConversation, listConversations, renameConversation } from "@/api";
 import { usd } from "@/format";
 import { cn } from "@/lib/utils";
+import { ChatConnectionProvider } from "@/lib/chat-connection";
+import { isConnectionError, useChatConnection } from "@/lib/chat-context";
 import { navigate } from "@/router";
 import type { Conversation } from "../../shared/api";
 
@@ -44,6 +44,8 @@ export function Chat({ params }: { params: URLSearchParams }) {
 	// On phones the list and the chat are separate screens (#/chat?list=1 is the list).
 	const showList = params.get("list") === "1";
 	const [list, setList] = useState<Conversation[] | null>(null);
+	// Kept here so a draft survives the chat switching from WebSocket to HTTP.
+	const [draft, setDraft] = useState("");
 	const refresh = useCallback(() => {
 		listConversations().then(setList, (e: Error) => toast.error(e.message));
 	}, []);
@@ -74,7 +76,9 @@ export function Chat({ params }: { params: URLSearchParams }) {
 							</p>
 						}
 					>
-						<ChatThread key={id} id={id} onTurnEnd={refresh} />
+						<ChatConnectionProvider key={id} id={id}>
+							<ChatThread id={id} onTurnEnd={refresh} input={draft} setInput={setDraft} />
+						</ChatConnectionProvider>
 					</Suspense>
 				</div>
 			)}
@@ -185,10 +189,9 @@ function ConversationList({ list, active, onChanged, onNew }: { list: Conversati
 	);
 }
 
-function ChatThread({ id, onTurnEnd }: { id: string; onTurnEnd: () => void }) {
-	const agent = useAgent({ agent: "ChatAgent", name: id });
-	const { messages, sendMessage, status, stop, error } = useAgentChat({ agent });
-	const [input, setInput] = useState("");
+function ChatThread({ id, onTurnEnd, input, setInput }: { id: string; onTurnEnd: () => void; input: string; setInput: (v: string) => void }) {
+	const chat = useChatConnection();
+	const { messages, status, error } = chat;
 	const bottom = useRef<HTMLDivElement>(null);
 	const busy = status === "submitted" || status === "streaming";
 
@@ -208,7 +211,7 @@ function ChatThread({ id, onTurnEnd }: { id: string; onTurnEnd: () => void }) {
 	const send = (text: string) => {
 		const t = text.trim();
 		if (!t || busy) return;
-		sendMessage({ text: t });
+		chat.send(t);
 		setInput("");
 	};
 
@@ -244,7 +247,16 @@ function ChatThread({ id, onTurnEnd }: { id: string; onTurnEnd: () => void }) {
 							<Loader2 className="size-4 animate-spin" /> Thinking…
 						</p>
 					)}
-					{error && <p className="text-sm text-destructive">Something went wrong: {error.message}</p>}
+					{error && !busy && (
+						<div role="alert" className="flex flex-wrap items-center gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm">
+							<span className="mr-auto">
+								{isConnectionError(error) ? "The connection dropped before the answer arrived. Please try again." : error.message}
+							</span>
+							<Button size="sm" variant="outline" onClick={() => chat.retry()}>
+								<RotateCcw /> Retry
+							</Button>
+						</div>
+					)}
 					<div ref={bottom} />
 				</div>
 			</div>
@@ -271,7 +283,7 @@ function ChatThread({ id, onTurnEnd }: { id: string; onTurnEnd: () => void }) {
 						className="max-h-40 min-h-10 resize-none"
 					/>
 					{busy ? (
-						<Button type="button" size="icon" variant="outline" onClick={() => stop()} aria-label="Stop">
+						<Button type="button" size="icon" variant="outline" onClick={() => chat.stop()} aria-label="Stop">
 							<Square />
 						</Button>
 					) : (
