@@ -1,5 +1,5 @@
 import type { ColumnDef } from "@tanstack/react-table";
-import { FileUp, Layers, Loader2, Trash2 } from "lucide-react";
+import { FileUp, Layers, Loader2, Trash2, CircleAlert, CircleCheck, FileText } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { CategoryBadge } from "@/components/category-badge";
 import { DataTable, SortHeader } from "@/components/data-table";
+import { PageHeader } from "@/components/page-header";
 import { deleteStatement, getStatement, listStatements, uploadStatement } from "@/api";
 import { formatDate, money } from "@/format";
 import { PdfError, preparePdf } from "@/pdf";
@@ -71,7 +72,7 @@ export function Statements() {
 									<Layers className="size-3" /> {overlap}
 								</p>
 							)}
-							{s.warning && <p className="text-xs text-amber-700 dark:text-amber-400">⚠ {s.warning}</p>}
+							{s.warning && <p className="text-xs text-warning">⚠ {s.warning}</p>}
 							{s.error && <p className="text-xs text-destructive">{s.error}</p>}
 						</div>
 					);
@@ -133,13 +134,12 @@ export function Statements() {
 	);
 
 	return (
-		<div className="space-y-4">
-			<div>
-				<h1 className="text-2xl font-semibold tracking-tight">Statements</h1>
-				<p className="text-sm text-muted-foreground">
-					Upload bank statement PDFs. Overlapping statements are fine: transactions already imported are recognised and not counted twice.
-				</p>
-			</div>
+		<div className="stagger space-y-4 md:space-y-5">
+			<PageHeader
+				title="Statements"
+				description="Upload bank statement PDFs. Overlapping statements are fine: transactions already imported are recognised and not counted twice."
+				className="animate-none"
+			/>
 			<Upload onUploaded={refresh} />
 			<Card>
 				<CardHeader>
@@ -211,7 +211,7 @@ function StatusBadge({ s }: { s: Statement }) {
 			);
 		case "done":
 			return (
-				<Badge variant="outline" className="border-green-600/40 text-green-700 dark:text-green-400" title={how}>
+				<Badge variant="outline" className="border-transparent bg-[color-mix(in_oklch,var(--positive)_13%,transparent)] text-positive" title={how}>
 					{s.extraction_method === "vision" ? "Done (OCR)" : s.extraction_method?.startsWith("parser:") ? "Done (parsed)" : "Done"}
 				</Badge>
 			);
@@ -256,8 +256,8 @@ function Upload({ onUploaded }: { onUploaded: () => void }) {
 					role="button"
 					tabIndex={0}
 					className={cn(
-						"flex flex-col items-center gap-2 rounded-lg border-2 border-dashed px-4 py-10 text-center transition-colors hover:border-primary/60 hover:bg-muted/50 focus-visible:border-primary focus-visible:outline-none",
-						dragging && "border-primary bg-muted/50",
+						"group/drop flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed px-4 py-10 text-center transition-all duration-300 hover:border-primary/60 hover:bg-primary/[0.03] focus-visible:border-primary focus-visible:outline-none",
+						dragging && "scale-[1.01] border-primary bg-primary/[0.06] shadow-lg shadow-primary/10",
 					)}
 					onClick={() => input.current?.click()}
 					onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && input.current?.click()}
@@ -272,8 +272,15 @@ function Upload({ onUploaded }: { onUploaded: () => void }) {
 						void handleFiles([...e.dataTransfer.files]);
 					}}
 				>
-					<FileUp className="size-8 text-muted-foreground" />
-					<p className="font-medium">Drop PDF statements here</p>
+					<span
+						className={cn(
+							"brand-gradient mb-1 flex size-12 items-center justify-center rounded-2xl text-white shadow-lg shadow-primary/25 transition-transform duration-500 ease-[var(--ease-spring)] group-hover/drop:-translate-y-1 group-hover/drop:scale-105",
+							dragging && "-translate-y-1.5 scale-110",
+						)}
+					>
+						<FileUp className="size-6" />
+					</span>
+					<p className="font-medium">{dragging ? "Drop to upload" : "Drop PDF statements here"}</p>
 					<p className="text-sm text-muted-foreground">or click to choose files · PDF only, up to 10 MB each</p>
 					<input
 						ref={input}
@@ -288,9 +295,17 @@ function Upload({ onUploaded }: { onUploaded: () => void }) {
 					/>
 				</div>
 				{items.length > 0 && (
-					<ul className="space-y-1 text-sm">
+					<ul className="space-y-1.5 text-sm">
 						{items.map((i) => (
-							<li key={i.key} className="flex gap-3">
+							<li key={i.key} className="animate-rise flex items-start gap-2.5 rounded-lg bg-muted/50 px-3 py-2">
+								{i.state === "error" ? (
+									<CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
+								) : i.state === "done" ? (
+									<CircleCheck className="animate-pop mt-0.5 size-4 shrink-0 text-positive" />
+								) : (
+									<Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-primary" />
+								)}
+								<FileText className="mt-0.5 hidden size-4 shrink-0 text-muted-foreground sm:block" />
 								<span className="font-medium break-all">{i.name}</span>
 								<span className={i.state === "error" ? "text-destructive" : "text-muted-foreground"}>
 									{i.state === "reading" && "Reading PDF…"}
@@ -313,7 +328,7 @@ const txColumns: ColumnDef<Transaction, unknown>[] = [
 	{
 		accessorKey: "amount",
 		header: ({ column }) => <SortHeader column={column} title="Amount" align="right" />,
-		cell: ({ row }) => <div className={cn("text-right tabular-nums", row.original.amount > 0 && "text-green-700 dark:text-green-400")}>{money(row.original.amount, row.original.currency)}</div>,
+		cell: ({ row }) => <div className={cn("text-right tabular-nums", row.original.amount > 0 && "text-positive")}>{money(row.original.amount, row.original.currency)}</div>,
 		meta: { className: "text-right" },
 	},
 ];

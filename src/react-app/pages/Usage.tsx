@@ -3,15 +3,19 @@
 // Charts follow the shadcn chart gallery: Bar Chart - Stacked + Legend and
 // Bar Chart - Horizontal.
 import type { ColumnDef } from "@tanstack/react-table";
+import { CalendarDays, FileText, MessageSquare, Sigma } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { type ChartConfig, ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { DataTable, SortHeader } from "@/components/data-table";
 import { useTheme } from "@/components/theme-provider";
+import { useChartMotion } from "@/components/motion";
+import { PageHeader } from "@/components/page-header";
+import { StatCard } from "@/components/stat-card";
 import { ToolCacheCard } from "@/components/tool-cache-card";
 import { getUsage } from "@/api";
 import { formatDate, monthLabel, usd } from "@/format";
@@ -50,16 +54,15 @@ export function Usage() {
 		);
 	}
 	return (
-		<div className="space-y-4">
-			<div>
-				<h1 className="text-2xl font-semibold tracking-tight">AI usage</h1>
-				<p className="text-sm text-muted-foreground">
-					Every AI call the app makes, with its cost in US dollars (Workers AI bills in USD). Statements read by the bunq and Revolut parsers only use AI for categories.
-				</p>
-			</div>
+		<div className="stagger space-y-4 md:space-y-5">
+			<PageHeader
+				title="AI usage"
+				description="Every AI call the app makes, with its cost in US dollars (Workers AI bills in USD). Statements read by the bunq and Revolut parsers only use AI for categories."
+				className="animate-none"
+			/>
 			<Kpis data={data} />
 			<CostChart data={data} />
-			<div className="grid gap-4 lg:grid-cols-2">
+			<div className="grid gap-4 md:gap-5 lg:grid-cols-2">
 				<ByFeature data={data} />
 				<ChatCard data={data} />
 			</div>
@@ -70,36 +73,26 @@ export function Usage() {
 }
 
 function Kpis({ data }: { data: UsageOverview }) {
-	const items = [
-		{ label: `This month (${monthLabel(data.this_month.month)})`, value: usd(data.this_month.cost), note: `${data.this_month.calls} AI calls` },
-		{ label: "All time", value: usd(data.all_time.cost), note: `${data.all_time.calls} AI calls` },
-		{
-			label: "Chat",
-			value: usd(data.chat.cost),
-			note: `${data.chat.conversations} conversations · ${data.chat.messages} questions`,
-		},
-		{
-			label: "Per statement",
-			value: usd(data.statements.avg_cost),
-			note: `Average over ${data.statements.count} statement${data.statements.count === 1 ? "" : "s"}`,
-		},
-	];
 	return (
-		<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-			{items.map((k) => (
-				<Card key={k.label}>
-					<CardHeader>
-						<CardDescription>{k.label}</CardDescription>
-						<CardTitle className="text-2xl font-semibold tabular-nums">{k.value}</CardTitle>
-					</CardHeader>
-					<CardFooter className="text-sm text-muted-foreground">{k.note}</CardFooter>
-				</Card>
-			))}
+		<div className="grid gap-4 sm:grid-cols-2 md:gap-5 xl:grid-cols-4">
+			<StatCard index={0} label={`This month (${monthLabel(data.this_month.month, "short")})`} icon={CalendarDays} value={data.this_month.cost} format={usd} note={`${data.this_month.calls} AI calls`} />
+			<StatCard index={1} label="All time" icon={Sigma} tone="neutral" value={data.all_time.cost} format={usd} note={`${data.all_time.calls} AI calls`} />
+			<StatCard index={2} label="Chat" icon={MessageSquare} tone="positive" value={data.chat.cost} format={usd} note={`${data.chat.conversations} conversations · ${data.chat.messages} questions`} />
+			<StatCard
+				index={3}
+				label="Per statement"
+				icon={FileText}
+				tone="warning"
+				value={data.statements.avg_cost ?? 0}
+				format={(n) => (data.statements.avg_cost == null ? "—" : usd(n))}
+				note={`Average over ${data.statements.count} statement${data.statements.count === 1 ? "" : "s"}`}
+			/>
 		</div>
 	);
 }
 
 function CostChart({ data }: { data: UsageOverview }) {
+	const motion = useChartMotion();
 	const [range, setRange] = useState<"days" | "months">("days");
 	const rows = useMemo(
 		() => (range === "days" ? data.by_day : data.by_month).map((p) => ({ period: p.period, total: p.total, ...p.by_feature })),
@@ -155,7 +148,7 @@ function CostChart({ data }: { data: UsageOverview }) {
 							/>
 							<ChartLegend content={<ChartLegendContent />} />
 							{used.map((k, i) => (
-								<Bar key={k} dataKey={k} stackId="cost" fill={`var(--color-${k})`} radius={i === used.length - 1 ? [4, 4, 0, 0] : 0} isAnimationActive={false} />
+								<Bar key={k} dataKey={k} stackId="cost" fill={`var(--color-${k})`} radius={i === used.length - 1 ? [4, 4, 0, 0] : 0} {...motion} />
 							))}
 						</BarChart>
 					</ChartContainer>

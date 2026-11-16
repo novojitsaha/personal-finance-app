@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { EmptyState } from "@/components/empty-state";
+import { PageHeader } from "@/components/page-header";
 import { addMemory, deleteMemory, listMemories, updateMemory } from "@/api";
 import { formatDate } from "@/format";
 import type { Memory as Note } from "../../shared/api";
@@ -52,32 +54,23 @@ export function Memory() {
 	};
 
 	return (
-		<div className="space-y-4">
-			<div className="flex flex-wrap items-start gap-3">
-				<div className="mr-auto">
-					<h1 className="text-2xl font-semibold tracking-tight">Memory</h1>
-					<p className="max-w-2xl text-sm text-muted-foreground">
-						The chat saves short notes from your conversations a few minutes after they go quiet, so new chats don't start from zero. Every new chat reads them. Edit or delete anything that's wrong.
-					</p>
-				</div>
+		<div className="stagger space-y-4 md:space-y-5">
+			<PageHeader
+				title="Memory"
+				description="The chat saves short notes from your conversations a few minutes after they go quiet, so new chats don't start from zero. Every new chat reads them. Edit or delete anything that's wrong."
+				className="animate-none"
+			>
 				<Button onClick={() => setEditing({ id: null, kind: "goal", text: "" })}>
 					<Plus /> Add note
 				</Button>
-			</div>
+			</PageHeader>
 
 			{notes === null ? (
 				<Skeleton className="h-60" />
 			) : notes.length === 0 ? (
-				<Card>
-					<CardHeader>
-						<CardTitle className="flex items-center gap-2">
-							<Brain className="size-4" /> Nothing remembered yet
-						</CardTitle>
-						<CardDescription>Chat about your goals or explain a payment, and notes will appear here.</CardDescription>
-					</CardHeader>
-				</Card>
+				<EmptyState icon={Brain} title="Nothing remembered yet" description="Chat about your goals or explain a payment, and notes will appear here." />
 			) : (
-				<div className="grid gap-4 lg:grid-cols-2">
+				<div className="stagger grid gap-4 md:gap-5 lg:grid-cols-2">
 					{KINDS.map(({ kind, title, description }) => {
 						const list = notes.filter((n) => n.kind === kind);
 						if (!list.length) return null;
@@ -88,7 +81,7 @@ export function Memory() {
 									<CardDescription>{description}</CardDescription>
 								</CardHeader>
 								<CardContent>
-									<ul className="divide-y">
+									<ul className="divide-y divide-border/60">
 										{list.map((n) => (
 											<li key={n.id} className="flex items-start gap-2 py-2">
 												<div className="min-w-0 flex-1">

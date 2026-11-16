@@ -3,6 +3,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppSidebar, NAV } from "@/components/app-sidebar";
+import { CommandMenu } from "@/components/command-menu";
 import { ModeToggle } from "@/components/mode-toggle";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { Budgets } from "@/pages/Budgets";
@@ -47,16 +48,19 @@ function Shell() {
 	return (
 		<SidebarProvider style={categoryCssVars(resolved === "dark") as React.CSSProperties}>
 			<AppSidebar path={path} />
-			<SidebarInset>
-				<header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
+			<SidebarInset className="app-backdrop min-w-0">
+				<header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b border-border/60 bg-background/70 px-4 backdrop-blur-xl">
 					<SidebarTrigger className="-ml-1" />
 					<Separator orientation="vertical" className="mr-2 data-[orientation=vertical]:h-4" />
-					<span className="font-medium">{title}</span>
-					<div className="ml-auto">
+					<span key={title} className="animate-fade font-medium">
+						{title}
+					</span>
+					<div className="ml-auto flex items-center gap-1.5">
+						<CommandMenu />
 						<ModeToggle />
 					</div>
 				</header>
-				<main className="mx-auto w-full max-w-7xl flex-1 p-4 md:p-6">
+				<main key={path} className="mx-auto w-full max-w-7xl flex-1 p-4 md:p-6">
 					<Page />
 				</main>
 			</SidebarInset>

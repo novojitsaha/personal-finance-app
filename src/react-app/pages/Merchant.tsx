@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CategoryBadge } from "@/components/category-badge";
 import { DataTable, SortHeader } from "@/components/data-table";
 import { MerchantFilter } from "@/components/merchant-filter";
+import { AnimatedNumber, useChartMotion } from "@/components/motion";
 import { getMerchant, markRecurring, mergeMerchant, renameMerchant, splitVariant } from "@/api";
 import { formatDate, money, monthLabel } from "@/format";
 import { href, merchantHref } from "@/router";
@@ -22,6 +23,7 @@ import { transactionColumns } from "./Transactions";
 import type { MerchantDetail, MerchantVariant } from "../../shared/api";
 
 export function Merchant({ merchantKey, tab }: { merchantKey: string; tab?: string | null }) {
+	const motion = useChartMotion();
 	const [data, setData] = useState<MerchantDetail | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [version, setVersion] = useState(0);
@@ -77,20 +79,32 @@ export function Merchant({ merchantKey, tab }: { merchantKey: string; tab?: stri
 	);
 
 	if (error) return <p className="text-destructive">{error}</p>;
-	if (!data) return <Skeleton className="h-96" />;
+	if (!data) {
+		return (
+			<div className="space-y-4">
+				<Skeleton className="h-12 w-72" />
+				<div className="grid gap-4 sm:grid-cols-2 md:gap-5 lg:grid-cols-4">
+					{[0, 1, 2, 3].map((i) => (
+						<Skeleton key={i} className="h-24" />
+					))}
+				</div>
+				<Skeleton className="h-72" />
+			</div>
+		);
+	}
 
 	const chartConfig = { spent: { label: "Spent", theme: CATEGORY_COLORS[data.category] } } satisfies ChartConfig;
 
 	return (
-		<div className="space-y-4">
+		<div className="stagger space-y-4 md:space-y-5">
 			<div className="flex flex-wrap items-center gap-3">
-				<Button variant="ghost" size="icon" asChild>
+				<Button variant="ghost" size="icon" asChild className="rounded-full transition-transform hover:-translate-x-0.5">
 					<a href={href("/transactions")} aria-label="Back to transactions">
 						<ArrowLeft />
 					</a>
 				</Button>
 				<div className="mr-auto">
-					<h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
+					<h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight md:text-3xl">
 						{data.merchant}
 						{data.recurring_rule_id !== null && (
 							<Badge variant="secondary">
@@ -127,9 +141,9 @@ export function Merchant({ merchantKey, tab }: { merchantKey: string; tab?: stri
 			</div>
 
 			<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-				<Stat label="Total spent" value={money(data.spent, data.currency)} note={data.received ? `${money(data.received, data.currency)} received` : undefined} />
-				<Stat label="Transactions" value={String(data.count)} />
-				<Stat label="Average payment" value={money(data.average, data.currency)} />
+				<Stat label="Total spent" value={<AnimatedNumber value={data.spent} format={(n) => money(n, data.currency)} />} note={data.received ? `${money(data.received, data.currency)} received` : undefined} />
+				<Stat label="Transactions" value={<AnimatedNumber value={data.count} format={(n) => String(Math.round(n))} />} />
+				<Stat label="Average payment" value={<AnimatedNumber value={data.average} format={(n) => money(n, data.currency)} />} />
 				<Stat label="First – last" value={`${formatDate(data.first_date)}`} note={`to ${formatDate(data.last_date)}`} />
 			</div>
 
@@ -143,7 +157,7 @@ export function Merchant({ merchantKey, tab }: { merchantKey: string; tab?: stri
 							<CartesianGrid vertical={false} />
 							<XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} tickFormatter={(m) => monthLabel(m, "short")} />
 							<ChartTooltip cursor={false} content={<ChartTooltipContent labelFormatter={(m) => monthLabel(String(m))} formatter={(v) => money(Number(v), data.currency)} />} />
-							<Bar dataKey="spent" fill="var(--color-spent)" radius={4} isAnimationActive={false} />
+							<Bar dataKey="spent" fill="var(--color-spent)" radius={4} {...motion} />
 						</BarChart>
 					</ChartContainer>
 				</CardContent>
@@ -197,12 +211,12 @@ export function Merchant({ merchantKey, tab }: { merchantKey: string; tab?: stri
 	);
 }
 
-function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
+function Stat({ label, value, note }: { label: string; value: React.ReactNode; note?: string }) {
 	return (
-		<Card className="gap-1 py-4">
+		<Card className="card-lift gap-1 py-4">
 			<CardHeader className="px-4">
 				<CardDescription>{label}</CardDescription>
-				<CardTitle className="text-xl tabular-nums">{value}</CardTitle>
+				<CardTitle className="text-xl font-semibold tracking-tight tabular-nums">{value}</CardTitle>
 				{note && <p className="text-xs text-muted-foreground">{note}</p>}
 			</CardHeader>
 		</Card>

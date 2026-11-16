@@ -14,6 +14,8 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CategoryDot } from "@/components/category-badge";
 import { DataTable, SortHeader } from "@/components/data-table";
+import { useChartMotion } from "@/components/motion";
+import { PageHeader } from "@/components/page-header";
 import { getBudgets, getDashboard, setBudget } from "@/api";
 import { money, monthLabel } from "@/format";
 import { href } from "@/router";
@@ -100,21 +102,26 @@ export function Budgets({ params }: { params: URLSearchParams }) {
 		[currency, month, save],
 	);
 
-	if (!overview || !month) return <Skeleton className="h-96" />;
+	if (!overview || !month) return (
+			<div className="space-y-4">
+				<Skeleton className="h-12 w-64" />
+				<div className="grid gap-4 lg:grid-cols-3">
+					<Skeleton className="h-80" />
+					<Skeleton className="h-80 lg:col-span-2" />
+				</div>
+				<Skeleton className="h-96" />
+			</div>
+		);
 	const total = overview.budgets["*"] ?? null;
 	const budgeted = rows.filter((r) => r.budget !== null);
 
 	return (
-		<div className="space-y-4">
-			<div className="flex flex-wrap items-center gap-3">
-				<div className="mr-auto">
-					<h1 className="text-2xl font-semibold tracking-tight">Budgets</h1>
-					<p className="text-sm text-muted-foreground">Set a monthly budget per category and see how each completed month went.</p>
-				</div>
+		<div className="stagger space-y-4 md:space-y-5">
+			<PageHeader title="Budgets" description="Set a monthly budget per category and see how each completed month went." className="animate-none">
 				<PeriodSelect months={month.months} value={month.period} onChange={(v) => (location.hash = href("/budgets", { month: v }).slice(1))} />
-			</div>
+			</PageHeader>
 
-			<div className="grid gap-4 lg:grid-cols-3">
+			<div className="grid gap-4 md:gap-5 lg:grid-cols-3">
 				<OverallRadial spent={month.kpis.spent} budget={total} currency={currency} period={month.period} onSave={(v) => save("*", v)} />
 				<Card className="lg:col-span-2">
 					<CardHeader>
@@ -122,11 +129,11 @@ export function Budgets({ params }: { params: URLSearchParams }) {
 						<CardDescription>Spending against the overall budget and category budgets</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<ul className="divide-y">
+						<ul className="divide-y divide-border/60">
 							{overview.months.map((m) => {
 								const over = m.categories.filter((c) => c.over);
 								return (
-									<li key={m.month} className="flex flex-wrap items-center gap-3 py-2 text-sm">
+									<li key={m.month} className="-mx-2 flex flex-wrap items-center gap-3 rounded-lg px-2 py-2.5 text-sm transition-colors hover:bg-accent/50">
 										<a href={href("/budgets", { month: m.month })} className="w-36 font-medium hover:underline">
 											{monthLabel(m.month)}
 										</a>
@@ -178,11 +185,11 @@ function BudgetInput({ value, onSave }: { value: number | null; onSave: (v: stri
 
 function StatusBadge({ over, diff, currency }: { over: boolean; diff: number; currency: string }) {
 	return over ? (
-		<Badge variant="outline" className="border-red-500/40 text-red-700 dark:text-red-400">
+		<Badge variant="outline" className="border-transparent bg-[color-mix(in_oklch,var(--negative)_13%,transparent)] text-negative">
 			<CircleAlert /> Over by {money(-diff, currency)}
 		</Badge>
 	) : (
-		<Badge variant="outline" className="border-green-600/40 text-green-700 dark:text-green-400">
+		<Badge variant="outline" className="border-transparent bg-[color-mix(in_oklch,var(--positive)_13%,transparent)] text-positive">
 			<CircleCheck /> {money(diff, currency)} left
 		</Badge>
 	);
@@ -193,13 +200,14 @@ function Usage({ spent, budget, currency }: { spent: number; budget: number | nu
 	const used = spent / budget;
 	return (
 		<div className="flex min-w-[220px] items-center gap-3">
-			<Progress value={Math.min(100, used * 100)} className={used > 1 ? "[&>*]:bg-red-600" : used > 0.9 ? "[&>*]:bg-amber-500" : "[&>*]:bg-green-600"} />
+			<Progress value={Math.min(100, used * 100)} className={used > 1 ? "[&>*]:bg-[var(--negative)]" : used > 0.9 ? "[&>*]:bg-[var(--warning)]" : "[&>*]:bg-[var(--positive)]"} />
 			<StatusBadge over={spent > budget} diff={budget - spent} currency={currency} />
 		</div>
 	);
 }
 
 function OverallRadial({ spent, budget, currency, period, onSave }: { spent: number; budget: number | null; currency: string; period: string; onSave: (v: string) => void }) {
+	const motion = useChartMotion(150);
 	const used = budget ? spent / budget : 0;
 	const over = budget !== null && spent > budget;
 	const config = {
@@ -217,7 +225,7 @@ function OverallRadial({ spent, budget, currency, period, onSave }: { spent: num
 					<ChartContainer config={config} className="mx-auto aspect-square max-h-[220px]">
 						<RadialBarChart data={data} startAngle={90} endAngle={90 - 360 * Math.min(used, 1)} innerRadius={80} outerRadius={110}>
 							<PolarGrid gridType="circle" radialLines={false} stroke="none" className="first:fill-muted last:fill-background" polarRadius={[86, 74]} />
-							<RadialBar dataKey="used" background cornerRadius={10} isAnimationActive={false} />
+							<RadialBar dataKey="used" background cornerRadius={10} {...motion} />
 							<PolarRadiusAxis tick={false} tickLine={false} axisLine={false}>
 								<Label
 									content={({ viewBox }) =>

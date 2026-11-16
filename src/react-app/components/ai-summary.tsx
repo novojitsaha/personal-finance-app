@@ -42,10 +42,14 @@ export function AiSummary({ month }: { month: string }) {
 
 	if (loaded && !digest && !generating) return null;
 	return (
-		<Card>
+		<Card className="relative ring-primary/20">
+			<span className="brand-gradient absolute inset-x-0 top-0 h-0.5" aria-hidden />
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
-					<Sparkles className="size-4" /> AI summary
+					<span className="brand-gradient flex size-7 items-center justify-center rounded-lg text-white shadow-sm shadow-primary/30">
+						<Sparkles className="size-4" />
+					</span>
+					AI summary
 				</CardTitle>
 				<CardDescription>Written from this month's numbers; check details in the charts below</CardDescription>
 				<CardAction className="flex items-center gap-2">
@@ -67,7 +71,7 @@ export function AiSummary({ month }: { month: string }) {
 						<Skeleton className="h-4 w-1/2" />
 					</div>
 				) : (
-					<div className="text-sm leading-relaxed [&_li]:my-1 [&_strong]:font-semibold [&_ul]:list-disc [&_ul]:pl-5">
+					<div className="animate-fade text-sm leading-relaxed [&_li]:my-1 [&_strong]:font-semibold [&_ul]:list-disc [&_ul]:pl-5">
 						<Markdown>{digest.summary}</Markdown>
 					</div>
 				)}
