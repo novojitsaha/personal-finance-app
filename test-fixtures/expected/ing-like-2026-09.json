@@ -1,0 +1,341 @@
+{
+	"bank": "ING",
+	"account": "NL91INGB0004386274",
+	"holder": "J. Jansen",
+	"currency": "EUR",
+	"start": "2026-09-01",
+	"end": "2026-09-30",
+	"opening": 2143.18,
+	"closing": 3196.95,
+	"transactions": [
+		{
+			"date": "2026-09-01",
+			"description": "WONINGSTICHTING DE KEY HUUR",
+			"merchant": "De Key",
+			"category": "Rent & Housing",
+			"acceptable": [
+				"Rent & Housing"
+			],
+			"amount": -1250
+		},
+		{
+			"date": "2026-09-01",
+			"description": "KLM ROYAL DUTCH AIRLINES",
+			"merchant": "KLM",
+			"category": "Travel",
+			"acceptable": [
+				"Travel"
+			],
+			"amount": -167.16
+		},
+		{
+			"date": "2026-09-02",
+			"description": "CAFE DE KLOS AMSTERDAM",
+			"merchant": "Cafe de Klos",
+			"category": "Bars & Nightlife",
+			"acceptable": [
+				"Bars & Nightlife",
+				"Restaurants"
+			],
+			"amount": -26.29
+		},
+		{
+			"date": "2026-09-02",
+			"description": "KRUIDVAT 7781",
+			"merchant": "Kruidvat",
+			"category": "Shopping",
+			"acceptable": [
+				"Shopping",
+				"Health & Fitness"
+			],
+			"amount": -12.7
+		},
+		{
+			"date": "2026-09-03",
+			"description": "PATHE TUSCHINSKI",
+			"merchant": "Pathe",
+			"category": "Entertainment",
+			"acceptable": [
+				"Entertainment"
+			],
+			"amount": -26.64
+		},
+		{
+			"date": "2026-09-05",
+			"description": "AMAZON EU SARL AMAZON.NL",
+			"merchant": "Amazon",
+			"category": "Shopping",
+			"acceptable": [
+				"Shopping"
+			],
+			"amount": -44.12
+		},
+		{
+			"date": "2026-09-05",
+			"description": "NS GROEP IZ NS REIZIGERS",
+			"merchant": "NS",
+			"category": "Transport",
+			"acceptable": [
+				"Transport"
+			],
+			"amount": -4.49
+		},
+		{
+			"date": "2026-09-05",
+			"description": "ZIGGO SERVICES BV",
+			"merchant": "Ziggo",
+			"category": "Utilities",
+			"acceptable": [
+				"Utilities",
+				"Subscriptions"
+			],
+			"amount": -52.5
+		},
+		{
+			"date": "2026-09-06",
+			"description": "COURSERA INC",
+			"merchant": "Coursera",
+			"category": "Education",
+			"acceptable": [
+				"Education",
+				"Subscriptions"
+			],
+			"amount": -41.83
+		},
+		{
+			"date": "2026-09-06",
+			"description": "COFFEE COMPANY HAARLEMMERSTR",
+			"merchant": "Coffee Company",
+			"category": "Coffee & Snacks",
+			"acceptable": [
+				"Coffee & Snacks"
+			],
+			"amount": -5.09
+		},
+		{
+			"date": "2026-09-07",
+			"description": "LIDL NEDERLAND GMBH",
+			"merchant": "Lidl",
+			"category": "Groceries",
+			"acceptable": [
+				"Groceries"
+			],
+			"amount": -32.78
+		},
+		{
+			"date": "2026-09-09",
+			"description": "CAFE DE KLOS AMSTERDAM",
+			"merchant": "Cafe de Klos",
+			"category": "Bars & Nightlife",
+			"acceptable": [
+				"Bars & Nightlife",
+				"Restaurants"
+			],
+			"amount": -47.82
+		},
+		{
+			"date": "2026-09-09",
+			"description": "STARBUCKS CENTRAAL STATION",
+			"merchant": "Starbucks",
+			"category": "Coffee & Snacks",
+			"acceptable": [
+				"Coffee & Snacks"
+			],
+			"amount": -4.69
+		},
+		{
+			"date": "2026-09-10",
+			"description": "ALBERT HEIJN 1234 AMSTERDAM",
+			"merchant": "Albert Heijn",
+			"category": "Groceries",
+			"acceptable": [
+				"Groceries"
+			],
+			"amount": -16.4
+		},
+		{
+			"date": "2026-09-11",
+			"description": "NETFLIX.COM AMSTERDAM",
+			"merchant": "Netflix",
+			"category": "Subscriptions",
+			"acceptable": [
+				"Subscriptions",
+				"Entertainment"
+			],
+			"amount": -13.99
+		},
+		{
+			"date": "2026-09-12",
+			"description": "TIKKIE J. DE VRIES ETENTJE",
+			"merchant": "J. de Vries",
+			"category": "Transfers",
+			"acceptable": [
+				"Transfers",
+				"Income"
+			],
+			"amount": 22.5
+		},
+		{
+			"date": "2026-09-15",
+			"description": "STARBUCKS CENTRAAL STATION",
+			"merchant": "Starbucks",
+			"category": "Coffee & Snacks",
+			"acceptable": [
+				"Coffee & Snacks"
+			],
+			"amount": -4.6
+		},
+		{
+			"date": "2026-09-15",
+			"description": "STARBUCKS CENTRAAL STATION",
+			"merchant": "Starbucks",
+			"category": "Coffee & Snacks",
+			"acceptable": [
+				"Coffee & Snacks"
+			],
+			"amount": -4.6
+		},
+		{
+			"date": "2026-09-16",
+			"description": "AMAZON EU SARL AMAZON.NL",
+			"merchant": "Amazon",
+			"category": "Shopping",
+			"acceptable": [
+				"Shopping"
+			],
+			"amount": -24.39
+		},
+		{
+			"date": "2026-09-18",
+			"description": "ZARA NEDERLAND BV",
+			"merchant": "Zara",
+			"category": "Clothing & Fashion",
+			"acceptable": [
+				"Clothing & Fashion"
+			],
+			"amount": -51.83
+		},
+		{
+			"date": "2026-09-19",
+			"description": "SPOTIFY P2A3B4C5D6 STOCKHOLM",
+			"merchant": "Spotify",
+			"category": "Subscriptions",
+			"acceptable": [
+				"Subscriptions",
+				"Entertainment"
+			],
+			"amount": -11.99
+		},
+		{
+			"date": "2026-09-20",
+			"description": "STARBUCKS CENTRAAL STATION",
+			"merchant": "Starbucks",
+			"category": "Coffee & Snacks",
+			"acceptable": [
+				"Coffee & Snacks"
+			],
+			"amount": -5.01
+		},
+		{
+			"date": "2026-09-21",
+			"description": "RESTAURANT DE KAS",
+			"merchant": "De Kas",
+			"category": "Restaurants",
+			"acceptable": [
+				"Restaurants"
+			],
+			"amount": -74.94
+		},
+		{
+			"date": "2026-09-21",
+			"description": "ALBERT HEIJN 1234 AMSTERDAM",
+			"merchant": "Albert Heijn",
+			"category": "Groceries",
+			"acceptable": [
+				"Groceries"
+			],
+			"amount": -34.84
+		},
+		{
+			"date": "2026-09-22",
+			"description": "NS GROEP IZ NS REIZIGERS",
+			"merchant": "NS",
+			"category": "Transport",
+			"acceptable": [
+				"Transport"
+			],
+			"amount": -22.44
+		},
+		{
+			"date": "2026-09-23",
+			"description": "COURSERA INC",
+			"merchant": "Coursera",
+			"category": "Education",
+			"acceptable": [
+				"Education",
+				"Subscriptions"
+			],
+			"amount": -48.38
+		},
+		{
+			"date": "2026-09-23",
+			"description": "JUMBO SUPERMARKTEN AMSTERDAM",
+			"merchant": "Jumbo",
+			"category": "Groceries",
+			"acceptable": [
+				"Groceries"
+			],
+			"amount": -12.55
+		},
+		{
+			"date": "2026-09-24",
+			"description": "ACME BV SALARIS",
+			"merchant": "Acme BV",
+			"category": "Income",
+			"acceptable": [
+				"Income"
+			],
+			"amount": 3412.55
+		},
+		{
+			"date": "2026-09-25",
+			"description": "NAAR SPAARREKENING NL12INGB0001234567",
+			"merchant": "Savings account",
+			"category": "Transfers",
+			"acceptable": [
+				"Transfers"
+			],
+			"amount": -300
+		},
+		{
+			"date": "2026-09-25",
+			"description": "STICHTING UNICEF NEDERLAND",
+			"merchant": "UNICEF",
+			"category": "Gifts & Donations",
+			"acceptable": [
+				"Gifts & Donations"
+			],
+			"amount": -20.93
+		},
+		{
+			"date": "2026-09-30",
+			"description": "KOSTEN BETAALPAKKET",
+			"merchant": "Bank fees",
+			"category": "Fees & Charges",
+			"acceptable": [
+				"Fees & Charges"
+			],
+			"amount": -3.65
+		},
+		{
+			"date": "2026-09-30",
+			"description": "BOL.COM BV UTRECHT",
+			"merchant": "bol.com",
+			"category": "Shopping",
+			"acceptable": [
+				"Shopping"
+			],
+			"amount": -14.63
+		}
+	]
+}

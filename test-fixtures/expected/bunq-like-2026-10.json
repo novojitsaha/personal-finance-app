@@ -1,0 +1,310 @@
+{
+	"bank": "bunq",
+	"account": "NL54BUNQ2025123456",
+	"holder": "J. Jansen",
+	"currency": "EUR",
+	"start": "2026-10-01",
+	"end": "2026-10-31",
+	"opening": 1830.07,
+	"closing": 2500.24,
+	"transactions": [
+		{
+			"date": "2026-10-01",
+			"description": "WONINGSTICHTING DE KEY HUUR",
+			"merchant": "De Key",
+			"category": "Rent & Housing",
+			"acceptable": [
+				"Rent & Housing"
+			],
+			"amount": -1250
+		},
+		{
+			"date": "2026-10-02",
+			"description": "THUISBEZORGD.NL",
+			"merchant": "Thuisbezorgd",
+			"category": "Restaurants",
+			"acceptable": [
+				"Restaurants"
+			],
+			"amount": -22.38
+		},
+		{
+			"date": "2026-10-04",
+			"description": "BASIC-FIT NEDERLAND B.V.",
+			"merchant": "Basic-Fit",
+			"category": "Health & Fitness",
+			"acceptable": [
+				"Health & Fitness",
+				"Subscriptions"
+			],
+			"amount": -29.99
+		},
+		{
+			"date": "2026-10-04",
+			"description": "STICHTING UNICEF NEDERLAND",
+			"merchant": "UNICEF",
+			"category": "Gifts & Donations",
+			"acceptable": [
+				"Gifts & Donations"
+			],
+			"amount": -13.04
+		},
+		{
+			"date": "2026-10-04",
+			"description": "NETFLIX.COM AMSTERDAM",
+			"merchant": "Netflix",
+			"category": "Subscriptions",
+			"acceptable": [
+				"Subscriptions",
+				"Entertainment"
+			],
+			"amount": -13.99
+		},
+		{
+			"date": "2026-10-05",
+			"description": "ALBERT HEIJN 1234 AMSTERDAM",
+			"merchant": "Albert Heijn",
+			"category": "Groceries",
+			"acceptable": [
+				"Groceries"
+			],
+			"amount": -21.12
+		},
+		{
+			"date": "2026-10-07",
+			"description": "SPOTIFY P2A3B4C5D6 STOCKHOLM",
+			"merchant": "Spotify",
+			"category": "Subscriptions",
+			"acceptable": [
+				"Subscriptions",
+				"Entertainment"
+			],
+			"amount": -11.99
+		},
+		{
+			"date": "2026-10-08",
+			"description": "BOOKING.COM HOTEL RESERVATION",
+			"merchant": "Booking.com",
+			"category": "Travel",
+			"acceptable": [
+				"Travel"
+			],
+			"amount": -244.44
+		},
+		{
+			"date": "2026-10-09",
+			"description": "KRUIDVAT 7781",
+			"merchant": "Kruidvat",
+			"category": "Shopping",
+			"acceptable": [
+				"Shopping",
+				"Health & Fitness"
+			],
+			"amount": -12.86
+		},
+		{
+			"date": "2026-10-09",
+			"description": "KLM ROYAL DUTCH AIRLINES",
+			"merchant": "KLM",
+			"category": "Travel",
+			"acceptable": [
+				"Travel"
+			],
+			"amount": -130.16
+		},
+		{
+			"date": "2026-10-12",
+			"description": "TIKKIE J. DE VRIES ETENTJE",
+			"merchant": "J. de Vries",
+			"category": "Transfers",
+			"acceptable": [
+				"Transfers",
+				"Income"
+			],
+			"amount": 22.5
+		},
+		{
+			"date": "2026-10-13",
+			"description": "GVB AMSTERDAM OV-CHIPKAART",
+			"merchant": "GVB",
+			"category": "Transport",
+			"acceptable": [
+				"Transport"
+			],
+			"amount": -5.14
+		},
+		{
+			"date": "2026-10-13",
+			"description": "ZARA NEDERLAND BV",
+			"merchant": "Zara",
+			"category": "Clothing & Fashion",
+			"acceptable": [
+				"Clothing & Fashion"
+			],
+			"amount": -50.86
+		},
+		{
+			"date": "2026-10-15",
+			"description": "NETFLIX.COM AMSTERDAM",
+			"merchant": "Netflix",
+			"category": "Subscriptions",
+			"acceptable": [
+				"Subscriptions",
+				"Entertainment"
+			],
+			"amount": -13.99
+		},
+		{
+			"date": "2026-10-16",
+			"description": "KLM ROYAL DUTCH AIRLINES",
+			"merchant": "KLM",
+			"category": "Travel",
+			"acceptable": [
+				"Travel"
+			],
+			"amount": -182.94
+		},
+		{
+			"date": "2026-10-17",
+			"description": "STARBUCKS CENTRAAL STATION",
+			"merchant": "Starbucks",
+			"category": "Coffee & Snacks",
+			"acceptable": [
+				"Coffee & Snacks"
+			],
+			"amount": -5.8
+		},
+		{
+			"date": "2026-10-18",
+			"description": "NETFLIX.COM AMSTERDAM",
+			"merchant": "Netflix",
+			"category": "Subscriptions",
+			"acceptable": [
+				"Subscriptions",
+				"Entertainment"
+			],
+			"amount": -13.99
+		},
+		{
+			"date": "2026-10-19",
+			"description": "NS GROEP IZ NS REIZIGERS",
+			"merchant": "NS",
+			"category": "Transport",
+			"acceptable": [
+				"Transport"
+			],
+			"amount": -7.95
+		},
+		{
+			"date": "2026-10-19",
+			"description": "UBER *TRIP HELP.UBER.COM",
+			"merchant": "Uber",
+			"category": "Transport",
+			"acceptable": [
+				"Transport"
+			],
+			"amount": -15.98
+		},
+		{
+			"date": "2026-10-23",
+			"description": "STARBUCKS CENTRAAL STATION",
+			"merchant": "Starbucks",
+			"category": "Coffee & Snacks",
+			"acceptable": [
+				"Coffee & Snacks"
+			],
+			"amount": -3.85
+		},
+		{
+			"date": "2026-10-24",
+			"description": "ACME BV SALARIS",
+			"merchant": "Acme BV",
+			"category": "Income",
+			"acceptable": [
+				"Income"
+			],
+			"amount": 3412.55
+		},
+		{
+			"date": "2026-10-25",
+			"description": "NAAR SPAARREKENING NL12INGB0001234567",
+			"merchant": "Savings account",
+			"category": "Transfers",
+			"acceptable": [
+				"Transfers"
+			],
+			"amount": -300
+		},
+		{
+			"date": "2026-10-27",
+			"description": "VATTENFALL KLANTENSERVICE",
+			"merchant": "Vattenfall",
+			"category": "Utilities",
+			"acceptable": [
+				"Utilities"
+			],
+			"amount": -108.28
+		},
+		{
+			"date": "2026-10-28",
+			"description": "COFFEE COMPANY HAARLEMMERSTR",
+			"merchant": "Coffee Company",
+			"category": "Coffee & Snacks",
+			"acceptable": [
+				"Coffee & Snacks"
+			],
+			"amount": -5.62
+		},
+		{
+			"date": "2026-10-28",
+			"description": "ZARA NEDERLAND BV",
+			"merchant": "Zara",
+			"category": "Clothing & Fashion",
+			"acceptable": [
+				"Clothing & Fashion"
+			],
+			"amount": -79.94
+		},
+		{
+			"date": "2026-10-28",
+			"description": "LIDL NEDERLAND GMBH",
+			"merchant": "Lidl",
+			"category": "Groceries",
+			"acceptable": [
+				"Groceries"
+			],
+			"amount": -16.15
+		},
+		{
+			"date": "2026-10-29",
+			"description": "KLM ROYAL DUTCH AIRLINES",
+			"merchant": "KLM",
+			"category": "Travel",
+			"acceptable": [
+				"Travel"
+			],
+			"amount": -159.21
+		},
+		{
+			"date": "2026-10-30",
+			"description": "COURSERA INC",
+			"merchant": "Coursera",
+			"category": "Education",
+			"acceptable": [
+				"Education",
+				"Subscriptions"
+			],
+			"amount": -41.56
+		},
+		{
+			"date": "2026-10-31",
+			"description": "KOSTEN BETAALPAKKET",
+			"merchant": "Bank fees",
+			"category": "Fees & Charges",
+			"acceptable": [
+				"Fees & Charges"
+			],
+			"amount": -3.65
+		}
+	]
+}
