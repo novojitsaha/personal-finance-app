@@ -220,3 +220,40 @@ export interface BudgetOverview {
 	budgets: Record<string, number>;
 	months: BudgetMonth[];
 }
+
+export interface UsagePeriod {
+	/** "YYYY-MM" or "YYYY-MM-DD". */
+	period: string;
+	/** Cost per feature (extraction, categorization, chat, ...). */
+	by_feature: Record<string, number>;
+	total: number;
+}
+
+export interface UsageCall {
+	id: number;
+	created_at: string;
+	feature: string;
+	task: string;
+	model: string;
+	input_tokens: number;
+	output_tokens: number;
+	cost_usd: number;
+	ok: boolean;
+	statement_id: string | null;
+	conversation_id: string | null;
+	filename: string | null;
+}
+
+/** GET /api/usage. Costs are in USD, as Workers AI bills them. */
+export interface UsageOverview {
+	currency: "USD";
+	this_month: { month: string; cost: number; calls: number };
+	all_time: { cost: number; calls: number };
+	by_feature: { feature: string; calls: number; input_tokens: number; output_tokens: number; cost: number }[];
+	by_month: UsagePeriod[];
+	/** The last 30 days, oldest first. */
+	by_day: UsagePeriod[];
+	chat: { conversations: number; messages: number; cost: number; avg_per_conversation: number | null; avg_per_message: number | null };
+	statements: { count: number; avg_cost: number | null };
+	recent: UsageCall[];
+}

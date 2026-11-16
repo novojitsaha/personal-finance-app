@@ -27,3 +27,11 @@ export function monthLabel(month: string, style: "long" | "short" = "long"): str
 }
 
 export const percent = (share: number) => `${(share * 100).toFixed(share < 0.1 ? 1 : 0)}%`;
+
+/** Workers AI bills in USD; small amounts get more decimals. */
+export function usd(n: number | null | undefined): string {
+	if (n == null) return "—";
+	if (n === 0) return "$0";
+	const digits = Math.abs(n) < 0.01 ? 4 : Math.abs(n) < 1 ? 3 : 2;
+	return `$${n.toFixed(digits)}`;
+}

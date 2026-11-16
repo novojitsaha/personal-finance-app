@@ -108,6 +108,7 @@ for (const g of groups) {
 }
 
 const sql = [
+	"DELETE FROM ai_usage;",
 	"DELETE FROM flag_dismissals;",
 	"DELETE FROM dismissed_recurring_suggestions;",
 	"DELETE FROM recurring_rules;",
@@ -140,6 +141,35 @@ sql.push(
 	"INSERT INTO recurring_rules (merchant_key, merchant, amount, tolerance, category) VALUES ('de key', 'De Key', 1250, 0.1, 'Rent & Housing'), ('netflix', 'Netflix', 13.99, 0.15, 'Subscriptions'), ('basic-fit', 'Basic-Fit', 29.99, 0.1, 'Health & Fitness'), ('ziggo', 'Ziggo', 52.5, 0.1, 'Utilities');",
 	"INSERT INTO budgets (category, amount) VALUES ('*', 2300), ('Groceries', 350), ('Restaurants', 160), ('Coffee & Snacks', 25), ('Shopping', 150), ('Transport', 90);",
 );
+
+// Synthetic AI usage (made-up token counts) so the AI Usage page has data:
+// statement reading and categorization per statement, plus chat questions
+// spread over the last 30 days.
+{
+	const model = "@cf/deepseek-ai/deepseek-v4.1-flash-1017";
+	const cost = (i, o) => (i * 0.3 + o * 1.2) / 1e6;
+	let seed = 7;
+	const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+	const usage = (at, feature, task, i, o, extra = {}) =>
+		`INSERT INTO ai_usage (created_at, feature, task, model, input_tokens, output_tokens, cost_usd, statement_id, conversation_id, message_id) VALUES (${[
+			at, feature, task, model, i, o, cost(i, o), extra.statement ?? null, extra.conversation ?? null, extra.message ?? null,
+		].map(q).join(", ")});`;
+	for (const st of statements) {
+		const at = `${st.to}T09:00:30.000Z`;
+		for (let k = 0; k < 2; k++) sql.push(usage(at, "categorization", "categorize", 1800 + Math.round(rnd() * 900), 2500 + Math.round(rnd() * 2500), { statement: st.id }));
+	}
+	const now = Date.now();
+	for (let c = 0; c < 9; c++) {
+		const day = new Date(now - Math.round(rnd() * 28) * 86_400_000).toISOString().slice(0, 10);
+		const questions = 1 + Math.round(rnd() * 4);
+		for (let m = 0; m < questions; m++) {
+			const steps = 1 + Math.round(rnd() * 2);
+			for (let k = 0; k < steps; k++) {
+				sql.push(usage(`${day}T1${m}:0${k}:00.000Z`, "chat", "chat", 3500 + Math.round(rnd() * 3000), 300 + Math.round(rnd() * 900), { conversation: `seed-chat-${c}`, message: `seed-msg-${c}-${m}` }));
+			}
+		}
+	}
+}
 
 const dir = mkdtempSync(join(tmpdir(), "seed-"));
 const file = join(dir, "seed.sql");

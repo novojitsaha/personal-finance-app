@@ -11,6 +11,7 @@ import { Merchant } from "@/pages/Merchant";
 import { Statements } from "@/pages/Statements";
 import { Subscriptions } from "@/pages/Subscriptions";
 import { Transactions } from "@/pages/Transactions";
+import { Usage } from "@/pages/Usage";
 import { useRoute } from "@/router";
 import { categoryCssVars } from "@/theme";
 
@@ -26,6 +27,8 @@ function Page() {
 			return <Budgets params={params} />;
 		case "/statements":
 			return <Statements />;
+		case "/usage":
+			return <Usage />;
 		default:
 			return <Dashboard params={params} />;
 	}

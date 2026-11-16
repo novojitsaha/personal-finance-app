@@ -59,6 +59,35 @@ Statements API: `GET /api/statements`, `GET /api/statements/:id` (with transacti
   - A recurring charge that went up.
   - Bank fees.
 
+## AI usage
+
+Every Workers AI call (statement reading, categorization, and from step 4b chat and summaries) is stored in the `ai_usage` table with its tokens and cost. The **AI usage** page (`GET /api/usage`) shows this month's and all-time cost, cost per day or month by feature, chat conversations and questions, and averages per conversation and per statement. There is no spending cap. Prices per model live in `PRICING` in `src/worker/lib/usage.ts`.
+
+## MCP server
+
+`/mcp` is a stateless [MCP](https://modelcontextprotocol.io) server (Streamable HTTP, built with Cloudflare's Agents SDK `createMcpHandler`). It exposes the same read-only tools the in-app chat uses (`src/worker/lib/tools.ts`):
+
+| Tool | What it returns |
+|---|---|
+| `get_overview` | Totals for a month or period, change vs the previous month, top categories and merchants, months with data |
+| `search_transactions` | Matching transactions by merchant, category, period, amount or text, with totals |
+| `spending_by_category` | Spending per category with shares |
+| `compare_periods` | Two months compared per category or merchant |
+| `merchant_detail` | One merchant's totals, monthly spending, recurring status and latest transactions |
+| `subscriptions` | Recurring payments, monthly and yearly totals, price-increase and missed-charge warnings |
+| `budget_status` | Budgets vs spending for a month |
+| `unusual_charges` | Flagged charges and why |
+
+The tools run fixed queries; the model never writes SQL. Check them locally with `node scripts/mcp-check.mjs` while `npm run dev` runs.
+
+**Access.** `/mcp` is on finance.novojitsaha.com, so the Cloudflare Access application protects it like the rest of the app: a browser session works, an AI client without one gets the Access login page. To connect an external client (Claude, ChatGPT, an IDE) later, choose one of:
+
+- **Cloudflare Access as the OAuth server (recommended):** Cloudflare Access can secure MCP servers for remote clients, so the client signs in with your identity provider through Access. Check the current Zero Trust docs for MCP server applications when setting this up; it should need no code change.
+- **Service token:** for a client that can send custom headers, create an Access service token and add a Service Auth policy; the client sends `CF-Access-Client-Id` and `CF-Access-Client-Secret`.
+- **OAuth in the Worker:** wrap the handler with `@cloudflare/workers-oauth-provider` and pass the user via `authContext` (see Cloudflare's "Build a remote MCP server" guide).
+
+Remember that a connected AI provider receives the data its tool calls return.
+
 ## Development
 
 ```bash
@@ -101,6 +130,8 @@ Apply new D1 migrations first with `npm run db:migrate:remote`. Deploying builds
 Taken with the synthetic data from `npm run seed:local`.
 
 ![Dashboard](docs/screenshots/dashboard.png)
+
+![AI usage](docs/screenshots/usage.png)
 
 ## License
 

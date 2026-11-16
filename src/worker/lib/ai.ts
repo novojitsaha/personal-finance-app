@@ -16,6 +16,14 @@ import {
 	parseChunkExtraction,
 	parseStatementHeader,
 } from "./extraction";
+import { type Feature, recordUsage, tokensFromUsage } from "./usage";
+
+/** Where a call's usage is recorded: the AI binding plus D1 and the statement it is for. */
+export interface AiContext {
+	ai: Ai;
+	db?: D1Database;
+	statementId?: string;
+}
 
 /**
  * DeepSeek V4.1 Flash: reads images and text, 1M-token context, JSON-schema
@@ -84,12 +92,13 @@ type Message = { role: "system" | "user"; content: string | ContentPart[] };
  * can be checked in Workers observability.
  */
 async function run(
-	ai: Ai,
+	ctx: AiContext,
+	feature: Feature,
 	task: string,
 	messages: Message[],
 	opts: { effort: ReasoningEffort; maxTokens: number; schema?: { name: string; schema: object } },
 ): Promise<string> {
-	const result = (await ai.run(MODEL, {
+	const result = (await ctx.ai.run(MODEL, {
 		messages,
 		...(opts.schema && {
 			response_format: { type: "json_schema", json_schema: { name: opts.schema.name, schema: opts.schema.schema, strict: true } },
@@ -105,7 +114,16 @@ async function run(
 	console.log(JSON.stringify({ event: "ai_usage", task, model: MODEL, effort: opts.effort, usage: result.usage ?? null }));
 	const content = result.choices?.[0]?.message?.content ?? result.response;
 	const text = typeof content === "string" ? content : content == null ? "" : JSON.stringify(content);
-	if (result.choices?.[0]?.finish_reason === "length") {
+	const truncated = result.choices?.[0]?.finish_reason === "length";
+	await recordUsage(ctx.db, {
+		feature,
+		task,
+		model: MODEL,
+		...tokensFromUsage(result.usage),
+		ok: !truncated && !!text.trim(),
+		statementId: ctx.statementId,
+	});
+	if (truncated) {
 		throw new Error(`${MODEL} hit the output limit (${opts.maxTokens} tokens) before answering (${task}, reasoning ${opts.effort}).`);
 	}
 	if (!text.trim()) throw new Error(`Empty response from ${MODEL} (${task})`);
@@ -118,14 +136,15 @@ async function run(
  * (with more reasoning effort).
  */
 export async function extractChunk(
-	ai: Ai,
+	ctx: AiContext,
 	text: string,
 	part: { index: number; total: number },
 	attempt = 1,
 	checkCompleteness = true,
 ): Promise<ChunkExtraction> {
 	const content = await run(
-		ai,
+		ctx,
+		"extraction",
 		"extract",
 		[
 			{ role: "system", content: SYSTEM_PROMPT },
@@ -156,9 +175,10 @@ const HEADER_PROMPT = `You read the header and summary of a bank statement (any 
 PDF text extraction can separate labels from values: a block of labels (e.g. "starting balance", "ending balance", "total in", "total out") may be followed by a block of amounts in the same order; pair them up by position. Opening balance is the balance at the start of the period, closing balance at the end. Do not use totals of money in or out as balances.`;
 
 /** Extract statement-level fields from the start and end of the statement. */
-export async function extractHeader(ai: Ai, excerpt: string, attempt = 1): Promise<StatementHeader> {
+export async function extractHeader(ctx: AiContext, excerpt: string, attempt = 1): Promise<StatementHeader> {
 	const content = await run(
-		ai,
+		ctx,
+		"extraction",
 		"header",
 		[
 			{ role: "system", content: HEADER_PROMPT },
@@ -173,9 +193,10 @@ export async function extractHeader(ai: Ai, excerpt: string, attempt = 1): Promi
  * Categorize a batch of unique counterparties. Throws (so the step retries)
  * on invalid output or when an id is missing.
  */
-export async function categorize(ai: Ai, items: CategorizeItem[], attempt = 1): Promise<Record<number, Category>> {
+export async function categorize(ctx: AiContext, items: CategorizeItem[], attempt = 1): Promise<Record<number, Category>> {
 	const content = await run(
-		ai,
+		ctx,
+		"categorization",
 		"categorize",
 		[
 			{ role: "system", content: CATEGORIZE_PROMPT },
@@ -189,9 +210,10 @@ export async function categorize(ai: Ai, items: CategorizeItem[], attempt = 1): 
 const TRANSCRIBE_PROMPT = `This image is one page of a bank statement. Transcribe ALL text on the page as plain text, top to bottom. Put each table row or transaction on its own line and keep the columns in order separated by " | ". Copy dates, descriptions and amounts exactly as printed, including minus/plus signs, currency symbols, and decimal commas or points. Keep column headers (e.g. "Money out", "Money in", "Debit", "Credit", "Af/Bij") so it is clear which column an amount is in. Do not summarise, translate or add anything.`;
 
 /** Transcribe a scanned page image (JPEG/PNG) to text. */
-export async function transcribePage(ai: Ai, image: ArrayBuffer, mime: string, attempt = 1): Promise<string> {
+export async function transcribePage(ctx: AiContext, image: ArrayBuffer, mime: string, attempt = 1): Promise<string> {
 	return run(
-		ai,
+		ctx,
+		"extraction",
 		"transcribe",
 		[
 			{
