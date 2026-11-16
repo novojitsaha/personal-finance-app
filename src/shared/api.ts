@@ -18,7 +18,8 @@ export interface Statement {
 	status: StatementStatus;
 	error: string | null;
 	warning: string | null;
-	extraction_method: "text" | "vision" | null;
+	/** "text" / "vision" (AI extraction) or "parser:bunq", "parser:revolut" (deterministic). */
+	extraction_method: string | null;
 	transaction_count: number | null;
 	inserted_count: number | null;
 	/** Transactions this statement shares with other statements (overlap). */

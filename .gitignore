@@ -203,4 +203,8 @@ dist
 *.pdf
 !test-fixtures/*.pdf
 !test-fixtures/overlap/*.pdf
+!test-fixtures/parsers/*.pdf
 private/
+
+# Local-only checks against real statements (never commit)
+*.local.test.ts
