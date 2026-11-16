@@ -13,6 +13,7 @@ import { Subscriptions } from "@/pages/Subscriptions";
 import { Transactions } from "@/pages/Transactions";
 import { Usage } from "@/pages/Usage";
 import { Chat } from "@/pages/Chat";
+import { Memory } from "@/pages/Memory";
 import { useRoute } from "@/router";
 import { categoryCssVars } from "@/theme";
 
@@ -30,6 +31,8 @@ function Page() {
 			return <Statements />;
 		case "/chat":
 			return <Chat params={params} />;
+		case "/memory":
+			return <Memory />;
 		case "/usage":
 			return <Usage />;
 		default:

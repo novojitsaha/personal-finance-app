@@ -6,6 +6,7 @@ import { z } from "zod";
 import { CATEGORIES, type Category } from "../../shared/categories";
 import { addMonths, budgetReport, kpis, monthOf, months as monthsOf, spendingByCategory, subscriptions, topMerchants, type Tx } from "./analytics";
 import { type Data, load } from "./data";
+import { getDigest } from "./digest";
 
 const MONTH = /^\d{4}-\d{2}$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -56,7 +57,9 @@ export interface FinanceTool<S extends z.ZodObject = z.ZodObject> {
 	name: string;
 	description: string;
 	inputSchema: S;
-	execute(data: Data, input: z.infer<S>): unknown;
+	/** false for tools whose result can change without a data_version bump. */
+	cache?: boolean;
+	execute(data: Data, input: z.infer<S>, db: D1Database): unknown;
 }
 
 const tool = <S extends z.ZodObject>(t: FinanceTool<S>) => t;
@@ -264,6 +267,20 @@ export const TOOLS = [
 			};
 		},
 	}),
+	tool({
+		name: "get_digest",
+		description:
+			"The AI-written summary of a month (default: the latest month with data), with the facts it was written from: totals, change vs the previous month, biggest category changes, new merchants, subscription warnings and unusual charges. A quick way to answer 'how was my month'.",
+		inputSchema: z.object({ month: month.optional() }),
+		cache: false,
+		async execute(data, q, db) {
+			const target = q.month ?? monthsOf(data.all).at(-1);
+			if (!target) return { message: "No statements uploaded yet." };
+			const d = await getDigest(db, target, data);
+			if (!d) return { month: target, message: "No summary has been written for this month yet; use get_overview instead." };
+			return { month: target, summary: d.summary, outdated: d.stale, facts: d.facts };
+		},
+	}),
 ] as const;
 
 export type ToolName = (typeof TOOLS)[number]["name"];
@@ -274,5 +291,5 @@ export async function runTool(db: D1Database, name: string, input: unknown): Pro
 	if (!t) throw new Error(`Unknown tool: ${name}`);
 	const parsed = t.inputSchema.parse(input ?? {});
 	const data = await load(db);
-	return t.execute(data, parsed);
+	return t.execute(data, parsed, db);
 }

@@ -11,7 +11,7 @@ usage.get("/", async (c) => {
 	const db = c.env.DB;
 	const thisMonth = new Date().toISOString().slice(0, 7);
 	const since = new Date(Date.now() - 29 * 86_400_000).toISOString().slice(0, 10);
-	const [totals, byFeature, byMonth, byDay, chat, perStatement, recent] = await db.batch([
+	const [totals, byFeature, byMonth, byDay, chat, perStatement, recent, cache] = await db.batch([
 		db.prepare(
 			`SELECT count(*) AS calls, sum(cost_usd) AS cost,
 			        sum(CASE WHEN substr(created_at, 1, 7) = ?1 THEN cost_usd ELSE 0 END) AS month_cost,
@@ -33,6 +33,7 @@ usage.get("/", async (c) => {
 			`SELECT u.id, u.created_at, u.feature, u.task, u.model, u.input_tokens, u.output_tokens, u.cost_usd, u.ok, u.statement_id, u.conversation_id, s.filename
 			 FROM ai_usage u LEFT JOIN statements s ON s.id = u.statement_id ORDER BY u.id DESC LIMIT 50`,
 		),
+		db.prepare(`SELECT source, count(*) AS calls, sum(cache_hit) AS hits FROM tool_calls GROUP BY source`),
 	]);
 	const t = totals.results[0] as { calls: number; cost: number | null; month_cost: number | null; month_calls: number | null };
 	const ch = chat.results[0] as { conversations: number; messages: number; cost: number | null };
@@ -68,6 +69,7 @@ usage.get("/", async (c) => {
 			avg_per_message: ch.messages ? r6((ch.cost ?? 0) / ch.messages) : null,
 		},
 		statements: { count: ps.statements, avg_cost: ps.statements ? r6(ps.avg_cost) : null },
+		tool_cache: (cache.results as { source: "chat" | "mcp"; calls: number; hits: number }[]).map((r) => ({ ...r, hit_rate: r.calls ? r.hits / r.calls : 0 })),
 		recent: (recent.results as UsageOverview["recent"]).map((r) => ({ ...r, ok: !!r.ok, cost_usd: r6(r.cost_usd) })),
 	};
 	return c.json(body);

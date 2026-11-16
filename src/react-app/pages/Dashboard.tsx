@@ -20,6 +20,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CategoryDot } from "@/components/category-badge";
+import { AiSummary } from "@/components/ai-summary";
 import { FLAG_LABELS } from "@/components/flag-badges";
 import { getDashboard } from "@/api";
 import { money, monthLabel, percent, formatDate } from "@/format";
@@ -97,6 +98,8 @@ export function Dashboard({ params }: { params: URLSearchParams }) {
 			</div>
 
 			<KpiCards kpis={data.kpis} previous={data.previous} currency={c} />
+
+			{isMonth && <AiSummary month={data.period} />}
 
 			<div className="grid gap-4 lg:grid-cols-5">
 				<CategoryDonut data={data} className="lg:col-span-2" onSelect={(cat) => navigate("/transactions", { ...(isMonth ? { month: data.period } : {}), category: cat })} />

@@ -64,12 +64,19 @@ Statements API: `GET /api/statements`, `GET /api/statements/:id` (with transacti
 The **Chat** page answers questions about your money ("How much did I spend at Albert Heijn in October?", "Which subscriptions went up?"). It uses Cloudflare's Agents SDK:
 
 - **One `ChatAgent` Durable Object per conversation** (`src/worker/chat/agent.ts`, an `AIChatAgent`). Messages are stored in its SQLite and stream to the browser over a WebSocket at `/agents/chat-agent/<conversation id>` (behind Access like the rest of the app). The `conversations` table in D1 lists them; chats can be renamed and deleted.
+- **HTTP fallback.** Some networks (corporate web filters such as Zscaler) block WebSockets: the socket never connects or is cut, and the question never reaches the Worker. If the socket doesn't open within 5 seconds or drops before an answer arrives, the page switches to `POST /agents/chat-agent/<id>/http-chat`, answered as a server-sent event stream (AI SDK `DefaultChatTransport`), resends the unsent question, and uses HTTP straight away for the next 24 hours. Both paths read and write the same saved conversation (`src/react-app/lib/chat-connection.tsx`, `ChatAgent.onRequest`). Errors are shown with a Retry button.
 - **The model answers by calling the read-only finance tools** listed under "MCP server" below. Under each answer, "Used …" expands to show the tool calls and their results. The model can't change data.
 - **Model:** DeepSeek V4.1 Flash with low reasoning (`CHAT_MODEL` in `src/worker/chat/core.ts`). `npm run eval:chat` checks tool calling on 16 questions against the synthetic data (real Workers AI, about $0.01 per run); pass `EVAL_MODELS="@cf/a,@cf/b"` to compare models.
 
+## Memory, monthly summaries and the cache
+
+- **Highlights (Memory page).** Five minutes after a conversation goes quiet, the chat agent sends the new messages and the existing notes to the AI, which returns at most a few short notes: goals ("keep eating out under €150 a month"), facts the statements can't show ("the De Key payment on the 1st is rent"), answer preferences, and conclusions worth recalling. Notes that repeat an existing one are skipped or update it. They are stored in the `memories` table, and every new question starts with all goals and preferences plus the latest notes (30 at most). The Memory page lists them by kind; you can add, edit and delete notes. Vectorize isn't used: at this size all notes fit in the prompt. If notes grow into the hundreds, semantic lookup with Vectorize would be the next step.
+- **Monthly summaries.** After a statement is processed, the Workflow computes facts for each month it covers (totals, change vs the previous month, biggest category changes, new merchants, subscription warnings, unusual charges) and the AI writes 3–5 bullets from them (`digests` table). The dashboard shows them as the "AI summary" card. A summary is only rewritten when its month's facts change (for example after a category change), and then in the background when the dashboard asks for it. The chat starts with the latest month's summary and can read others with the `get_digest` tool (also on MCP).
+- **Tool cache.** Tool results are cached by tool and arguments in `tool_cache`, valid for the current `data_version`. Any change to the data (an upload, a delete, a category, merchant, recurring, budget or flag change) bumps `data_version` and clears the cache, so answers never use old numbers. Every tool call is logged in `tool_calls`; the AI usage page shows the hit rate for the chat and the MCP server.
+
 ## AI usage
 
-Every Workers AI call (statement reading, categorization, chat) is stored in the `ai_usage` table with its tokens and cost. The **AI usage** page (`GET /api/usage`) shows this month's and all-time cost, cost per day or month by feature, chat conversations and questions, and averages per conversation and per statement. There is no spending cap. Prices per model live in `PRICING` in `src/worker/lib/usage.ts`.
+Every Workers AI call (statement reading, categorization, chat, highlights, monthly summaries) is stored in the `ai_usage` table with its tokens and cost. The **AI usage** page (`GET /api/usage`) shows this month's and all-time cost, cost per day or month by feature, chat conversations and questions, and averages per conversation and per statement. There is no spending cap. Prices per model live in `PRICING` in `src/worker/lib/usage.ts`.
 
 ## MCP server
 
@@ -85,6 +92,7 @@ Every Workers AI call (statement reading, categorization, chat) is stored in the
 | `subscriptions` | Recurring payments, monthly and yearly totals, price-increase and missed-charge warnings |
 | `budget_status` | Budgets vs spending for a month |
 | `unusual_charges` | Flagged charges and why |
+| `get_digest` | A month's AI summary and the facts it was written from |
 
 The tools run fixed queries; the model never writes SQL. Check them locally with `node scripts/mcp-check.mjs` while `npm run dev` runs.
 
@@ -140,6 +148,8 @@ Taken with the synthetic data from `npm run seed:local`.
 ![Dashboard](docs/screenshots/dashboard.png)
 
 ![Chat](docs/screenshots/chat.png)
+
+![Memory](docs/screenshots/memory.png)
 
 ![AI usage](docs/screenshots/usage.png)
 

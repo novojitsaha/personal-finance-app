@@ -6,6 +6,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { TOOLS, type FinanceTool } from "./lib/tools";
 import { load } from "./lib/data";
+import { runCached } from "./lib/cache";
 
 const INSTRUCTIONS =
 	"Read-only access to one person's bank transactions (bunq, Revolut, ING statements). Amounts are in the account currency (usually EUR); negative = money out. Start with get_overview to see which months have data.";
@@ -17,7 +18,7 @@ function buildServer(db: D1Database): McpServer {
 			t.name,
 			{ description: t.description, inputSchema: t.inputSchema, annotations: { readOnlyHint: true, openWorldHint: false } },
 			async (input: unknown) => {
-				const result = await t.execute(await load(db), input as never);
+				const result = await runCached(t, input, { db, source: "mcp", data: () => load(db) });
 				return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
 			},
 		);

@@ -7,6 +7,39 @@ import { TOOLS, type FinanceTool } from "../lib/tools";
 import { type Data, load } from "../lib/data";
 import { months as monthsOf } from "../lib/analytics";
 import { recordUsage } from "../lib/usage";
+import { runCached } from "../lib/cache";
+import { getDigest } from "../lib/digest";
+
+/** Notes in the system prompt: all goals and preferences, plus the latest other notes. */
+const MAX_NOTES = 30;
+
+/**
+ * What a new question starts with besides the data: the saved memory notes
+ * and the latest month's AI summary (the chat reads digests first).
+ */
+export async function chatContext(db: D1Database, data: Data): Promise<string> {
+	const { results: notes } = await db
+		.prepare(
+			`SELECT id, kind, text FROM memories
+			 ORDER BY CASE kind WHEN 'goal' THEN 0 WHEN 'preference' THEN 1 ELSE 2 END, updated_at DESC LIMIT ?`,
+		)
+		.bind(MAX_NOTES)
+		.all<{ id: number; kind: string; text: string }>();
+	const latest = monthsOf(data.all).at(-1);
+	const digest = latest ? await getDigest(db, latest, data) : null;
+	const parts: string[] = [];
+	if (notes.length) {
+		parts.push(
+			`What you remember from earlier conversations (saved notes; trust the data over them if they conflict, and use them without announcing that you remember):\n${notes.map((n) => `- [${n.kind}] ${n.text}`).join("\n")}`,
+		);
+	}
+	if (digest) {
+		parts.push(
+			`Summary of ${digest.month}${digest.stale ? " (written before the latest data changes; check numbers with the tools)" : ""}:\n${digest.summary}\nFor other months, call get_digest before the detailed tools.`,
+		);
+	}
+	return parts.join("\n\n");
+}
 
 /** The model the chat uses (see the 4b PR for the tool-calling comparison). */
 export const CHAT_MODEL = "@cf/deepseek-ai/deepseek-v4.1-flash-1017";
@@ -38,16 +71,17 @@ Rules:
  * The finance tools as AI SDK tools. The data is loaded once per question and
  * shared by all tool calls of that question.
  */
-export function financeTools(db: D1Database): ToolSet {
+export function financeTools(db: D1Database, conversationId?: string): ToolSet {
 	let data: Promise<Data> | null = null;
 	const get = () => (data ??= load(db));
+	const ctx = { db, source: "chat" as const, conversationId, data: get };
 	return Object.fromEntries(
 		(TOOLS as readonly FinanceTool[]).map((t) => [
 			t.name,
 			tool({
 				description: t.description,
 				inputSchema: t.inputSchema,
-				execute: async (input: unknown) => t.execute(await get(), input as never),
+				execute: (input: unknown) => runCached(t, input, ctx),
 			}),
 		]),
 	);
