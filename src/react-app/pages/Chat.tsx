@@ -1,8 +1,8 @@
 // Chat with your finances. Each conversation is a ChatAgent Durable Object
 // (Cloudflare Agents SDK); useAgentChat streams answers over a WebSocket and
 // loads the saved messages when a conversation is reopened.
-import type { UIMessage } from "ai";
-import { ArrowLeft, ArrowUp, CalendarClock, ChevronRight, Loader2, MessageSquarePlus, MoreHorizontal, Pencil, ReceiptText, RotateCcw, ShieldAlert, Sparkles, Square, Trash2, Utensils, Wrench } from "lucide-react";
+import { isReasoningUIPart, isTextUIPart, isToolUIPart, type UIMessage } from "ai";
+import { ArrowDown, ArrowLeft, ArrowUp, Brain, CalendarClock, Check, ChevronRight, Copy, Loader2, MessageSquarePlus, MoreHorizontal, Pencil, ReceiptText, RefreshCw, RotateCcw, ShieldAlert, Sparkles, Square, Trash2, Utensils } from "lucide-react";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,21 +17,10 @@ import { deleteConversation, listConversations, renameConversation } from "@/api
 import { usd } from "@/format";
 import { cn } from "@/lib/utils";
 import { ChatConnectionProvider } from "@/lib/chat-connection";
+import { type AnyToolPart, ToolCard } from "@/components/chat/tool-views";
 import { isConnectionError, useChatConnection } from "@/lib/chat-context";
 import { navigate } from "@/router";
 import type { Conversation } from "../../shared/api";
-
-const TOOL_LABELS: Record<string, string> = {
-	get_overview: "Overview",
-	search_transactions: "Searched transactions",
-	spending_by_category: "Spending by category",
-	compare_periods: "Compared months",
-	merchant_detail: "Merchant details",
-	subscriptions: "Subscriptions",
-	budget_status: "Budgets",
-	unusual_charges: "Unusual charges",
-	get_digest: "Monthly summary",
-};
 
 const SUGGESTIONS = [
 	{ icon: ReceiptText, text: "How much did I spend last month, and on what?" },
@@ -42,6 +31,8 @@ const SUGGESTIONS = [
 
 export function Chat({ params }: { params: URLSearchParams }) {
 	const id = params.get("c");
+	// #/chat?q=… (e.g. from the dashboard's AI summary) asks that question in a new chat.
+	const question = params.get("q");
 	// On phones the list and the chat are separate screens (#/chat?list=1 is the list).
 	const showList = params.get("list") === "1";
 	const [list, setList] = useState<Conversation[] | null>(null);
@@ -55,8 +46,8 @@ export function Chat({ params }: { params: URLSearchParams }) {
 	const newChat = () => navigate("/chat", { c: crypto.randomUUID() });
 	// Opening the chat page starts a new conversation.
 	useEffect(() => {
-		if (!id && !showList) navigate("/chat", { c: crypto.randomUUID() }, true);
-	}, [id, showList]);
+		if (!id && !showList) navigate("/chat", { c: crypto.randomUUID(), q: question }, true);
+	}, [id, showList, question]);
 
 	return (
 		<div className="-m-4 grid h-[calc(100svh-3.5rem)] md:-m-6 md:grid-cols-[260px_1fr]">
@@ -78,7 +69,7 @@ export function Chat({ params }: { params: URLSearchParams }) {
 						}
 					>
 						<ChatConnectionProvider key={id} id={id}>
-							<ChatThread id={id} onTurnEnd={refresh} input={draft} setInput={setDraft} />
+							<ChatThread id={id} onTurnEnd={refresh} input={draft} setInput={setDraft} question={question} />
 						</ChatConnectionProvider>
 					</Suspense>
 				</div>
@@ -196,7 +187,7 @@ function ConversationList({ list, active, onChanged, onNew }: { list: Conversati
 	);
 }
 
-function ChatThread({ id, onTurnEnd, input, setInput }: { id: string; onTurnEnd: () => void; input: string; setInput: (v: string) => void }) {
+function ChatThread({ id, onTurnEnd, input, setInput, question }: { id: string; onTurnEnd: () => void; input: string; setInput: (v: string) => void; question: string | null }) {
 	const chat = useChatConnection();
 	const { messages, status, error } = chat;
 	const bottom = useRef<HTMLDivElement>(null);
@@ -211,9 +202,25 @@ function ChatThread({ id, onTurnEnd, input, setInput }: { id: string; onTurnEnd:
 		}
 		wasBusy.current = busy;
 	}, [busy, onTurnEnd]);
+	// Follow the streaming answer only while the reader is at the bottom.
+	const scroller = useRef<HTMLDivElement>(null);
+	const [atBottom, setAtBottom] = useState(true);
 	useEffect(() => {
-		bottom.current?.scrollIntoView({ block: "end" });
-	}, [messages, status]);
+		if (atBottom) bottom.current?.scrollIntoView({ block: "end" });
+	}, [messages, status, atBottom]);
+	const onScroll = () => {
+		const el = scroller.current;
+		if (el) setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
+	};
+
+	// Ask the question passed in the URL once, then drop it from the URL.
+	const asked = useRef(false);
+	useEffect(() => {
+		if (!question || asked.current) return;
+		asked.current = true;
+		if (messages.length === 0) chat.send(question);
+		navigate("/chat", { c: id }, true);
+	}, [question, messages.length, chat, id]);
 
 	const send = (text: string) => {
 		const t = text.trim();
@@ -231,7 +238,7 @@ function ChatThread({ id, onTurnEnd, input, setInput }: { id: string; onTurnEnd:
 					</a>
 				</Button>
 			</div>
-			<div className="min-h-0 flex-1 overflow-y-auto">
+			<div ref={scroller} onScroll={onScroll} className="relative min-h-0 flex-1 overflow-y-auto">
 				<div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
 					{messages.length === 0 && (
 						<div className="space-y-5 pt-6 text-center md:pt-14">
@@ -263,10 +270,10 @@ function ChatThread({ id, onTurnEnd, input, setInput }: { id: string; onTurnEnd:
 							</div>
 						</div>
 					)}
-					{messages.map((m) => (
-						<Message key={m.id} message={m} />
+					{messages.map((m, i) => (
+						<Message key={m.id} message={m} last={i === messages.length - 1} busy={busy} onRegenerate={() => chat.retry()} />
 					))}
-					{status === "submitted" && (
+					{(status === "submitted" || (status === "streaming" && messages[messages.length - 1]?.role === "user")) && (
 						<div className="animate-rise flex items-center gap-3 text-sm text-muted-foreground" role="status">
 							<AssistantAvatar />
 							<span className="typing-dots flex items-center gap-1 rounded-2xl bg-muted px-3.5 py-3" aria-label="Thinking">
@@ -288,6 +295,18 @@ function ChatThread({ id, onTurnEnd, input, setInput }: { id: string; onTurnEnd:
 					)}
 					<div ref={bottom} />
 				</div>
+				{!atBottom && messages.length > 0 && (
+					<Button
+						type="button"
+						size="icon"
+						variant="outline"
+						className="animate-pop sticky bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-background/90 shadow-md backdrop-blur"
+						onClick={() => bottom.current?.scrollIntoView({ block: "end", behavior: "smooth" })}
+						aria-label="Jump to latest message"
+					>
+						<ArrowDown />
+					</Button>
+				)}
 			</div>
 			<form
 				className="px-3 pb-3 md:pb-4"
@@ -330,35 +349,116 @@ function ChatThread({ id, onTurnEnd, input, setInput }: { id: string; onTurnEnd:
 	);
 }
 
-type ToolPart = { type: string; toolName?: string; toolCallId: string; state: string; input?: unknown; output?: unknown; errorText?: string };
-
-function Message({ message }: { message: UIMessage }) {
+function Message({ message, last, busy, onRegenerate }: { message: UIMessage; last: boolean; busy: boolean; onRegenerate: () => void }) {
 	if (message.role === "user") {
-		const text = message.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
+		const text = message.parts.map((p) => (isTextUIPart(p) ? p.text : "")).join("");
 		return (
 			<div className="animate-rise flex justify-end">
 				<div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-primary px-4 py-2 text-sm text-primary-foreground shadow-sm shadow-primary/20">{text}</div>
 			</div>
 		);
 	}
-	const tools = message.parts.filter((p) => p.type.startsWith("tool-") || p.type === "dynamic-tool") as unknown as ToolPart[];
+	const streaming = last && busy;
 	const text = message.parts
-		.filter((p) => p.type === "text")
-		.map((p) => (p as { text: string }).text)
+		.filter(isTextUIPart)
+		.map((p) => p.text)
 		.join("\n\n");
 	return (
-		<div className="animate-rise flex gap-3">
+		<div className="animate-rise group/msg flex gap-3">
 			<AssistantAvatar />
 			<div className="min-w-0 flex-1 space-y-2">
-			{text && (
-				<div className="text-sm leading-relaxed [&_table]:my-2 [&_table]:w-full [&_table]:text-sm [&_td]:border-b [&_td]:px-2 [&_td]:py-1 [&_th]:border-b [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_strong]:font-semibold">
-					<Markdown remarkPlugins={[remarkGfm]} components={{ table: (props) => <div className="overflow-x-auto"><table {...props} /></div> }}>
-						{text}
-					</Markdown>
-				</div>
-			)}
-			{tools.length > 0 && <ToolsUsed tools={tools} />}
+				{groupParts(message.parts).map((g, i) => {
+					if (g.kind === "tools") return <ToolGroup key={i} parts={g.parts} />;
+					if (g.kind === "reasoning") return <Reasoning key={i} text={g.text} active={streaming && g.streaming} />;
+					return <Answer key={i} text={g.text} />;
+				})}
+				{!streaming && text && <MessageActions text={text} canRegenerate={last} onRegenerate={onRegenerate} />}
 			</div>
+		</div>
+	);
+}
+
+type Group = { kind: "text"; text: string } | { kind: "reasoning"; text: string; streaming: boolean } | { kind: "tools"; parts: AnyToolPart[] };
+
+/** Message parts in the order they streamed, with neighbouring tool calls kept together. */
+function groupParts(parts: UIMessage["parts"]): Group[] {
+	const out: Group[] = [];
+	for (const p of parts) {
+		const prev = out[out.length - 1];
+		if (isToolUIPart(p)) {
+			if (prev?.kind === "tools") prev.parts.push(p);
+			else out.push({ kind: "tools", parts: [p] });
+		} else if (isReasoningUIPart(p)) {
+			if (!p.text.trim()) continue;
+			if (prev?.kind === "reasoning") {
+				prev.text += `\n\n${p.text}`;
+				prev.streaming = p.state === "streaming";
+			} else out.push({ kind: "reasoning", text: p.text, streaming: p.state === "streaming" });
+		} else if (isTextUIPart(p)) {
+			if (!p.text) continue;
+			if (prev?.kind === "text") prev.text += `\n\n${p.text}`;
+			else out.push({ kind: "text", text: p.text });
+		}
+	}
+	return out;
+}
+
+function Answer({ text }: { text: string }) {
+	return (
+		<div className="text-sm leading-relaxed [&_a]:text-primary [&_a]:underline [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_h3]:mt-3 [&_h3]:font-semibold [&_table]:my-2 [&_table]:w-full [&_table]:text-sm [&_td]:border-b [&_td]:px-2 [&_td]:py-1 [&_td]:tabular-nums [&_th]:border-b [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:font-medium [&_th]:text-muted-foreground [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_strong]:font-semibold">
+			<Markdown remarkPlugins={[remarkGfm]} components={{ table: (props) => <div className="overflow-x-auto rounded-lg border px-1"><table {...props} /></div> }}>
+				{text}
+			</Markdown>
+		</div>
+	);
+}
+
+function Reasoning({ text, active }: { text: string; active: boolean }) {
+	return (
+		<details className="group/r text-xs" open={active || undefined}>
+			<summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-md py-0.5 text-muted-foreground transition-colors hover:text-foreground">
+				{active ? <Loader2 className="size-3.5 animate-spin" /> : <Brain className="size-3.5" />}
+				{active ? "Thinking…" : "Thought process"}
+				<ChevronRight className="size-3 transition-transform group-open/r:rotate-90" />
+			</summary>
+			<p className="mt-1 border-l-2 border-primary/30 pl-3 leading-relaxed whitespace-pre-wrap text-muted-foreground">{text}</p>
+		</details>
+	);
+}
+
+function ToolGroup({ parts }: { parts: AnyToolPart[] }) {
+	return (
+		<div className="space-y-2">
+			{parts.map((p) => (
+				<ToolCard key={p.toolCallId} part={p} />
+			))}
+		</div>
+	);
+}
+
+function MessageActions({ text, canRegenerate, onRegenerate }: { text: string; canRegenerate: boolean; onRegenerate: () => void }) {
+	const [copied, setCopied] = useState(false);
+	return (
+		<div className={cn("flex items-center gap-0.5 transition-opacity", !canRegenerate && "opacity-0 group-hover/msg:opacity-100 focus-within:opacity-100 max-md:opacity-100")}>
+			<Button
+				variant="ghost"
+				size="icon"
+				className="size-7 text-muted-foreground"
+				aria-label="Copy answer"
+				onClick={() => {
+					void navigator.clipboard.writeText(text).then(() => {
+						setCopied(true);
+						setTimeout(() => setCopied(false), 1500);
+					});
+				}}
+			>
+				{copied ? <Check /> : <Copy />}
+			</Button>
+			{canRegenerate && (
+				<Button variant="ghost" size="icon" className="size-7 text-muted-foreground" aria-label="Regenerate answer" onClick={onRegenerate}>
+					<RefreshCw />
+				</Button>
+			)}
 		</div>
 	);
 }
@@ -368,36 +468,5 @@ function AssistantAvatar() {
 		<span className="brand-gradient mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm shadow-primary/30" aria-hidden>
 			<Sparkles className="size-3.5" />
 		</span>
-	);
-}
-
-function ToolsUsed({ tools }: { tools: ToolPart[] }) {
-	const name = (t: ToolPart) => t.toolName ?? t.type.replace(/^tool-/, "");
-	const running = tools.some((t) => t.state === "input-streaming" || t.state === "input-available");
-	return (
-		<details className="group rounded-lg border border-border/70 bg-muted/30 text-xs transition-colors open:bg-muted/50">
-			<summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:text-foreground">
-				<ChevronRight className="size-3.5 transition-transform group-open:rotate-90" />
-				{running ? <Loader2 className="size-3.5 animate-spin" /> : <Wrench className="size-3.5" />}
-				{running ? "Looking up your data…" : `Used ${[...new Set(tools.map((t) => TOOL_LABELS[name(t)] ?? name(t)))].join(", ")}`}
-			</summary>
-			<ul className="space-y-2 border-t px-3 py-2">
-				{tools.map((t) => (
-					<li key={t.toolCallId}>
-						<p className="font-medium">
-							{TOOL_LABELS[name(t)] ?? name(t)} <code className="text-muted-foreground">{name(t)}</code>
-						</p>
-						<pre className="mt-1 overflow-x-auto whitespace-pre-wrap break-all text-muted-foreground">{JSON.stringify(t.input ?? {})}</pre>
-						{t.state === "output-error" && <p className="text-destructive">{t.errorText}</p>}
-						{t.state === "output-available" && (
-							<details className="mt-1">
-								<summary className="cursor-pointer text-muted-foreground">Result</summary>
-								<pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-2">{JSON.stringify(t.output, null, 1)}</pre>
-							</details>
-						)}
-					</li>
-				))}
-			</ul>
-		</details>
 	);
 }
