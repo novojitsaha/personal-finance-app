@@ -1,7 +1,7 @@
 // "AI summary" card on the dashboard: the month's digest, written by the AI
 // after a statement is processed. If it is missing or outdated, the server
 // writes a new one in the background and this card checks back.
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, MessageCircleQuestion, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import Markdown from "react-markdown";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Skeleton } from "@/components/ui/skeleton";
 import { getDigest } from "@/api";
 import { href } from "@/router";
+import { monthLabel } from "@/format";
 import type { Digest } from "../../shared/api";
 
 export function AiSummary({ month }: { month: string }) {
@@ -75,7 +76,28 @@ export function AiSummary({ month }: { month: string }) {
 						<Markdown>{digest.summary}</Markdown>
 					</div>
 				)}
+				{digest && (
+					<div className="mt-4 flex flex-wrap gap-2" aria-label="Follow-up questions">
+						{followUps(month).map((q, i) => (
+							<a
+								key={q}
+								href={href("/chat", { q })}
+								style={{ "--i": i } as React.CSSProperties}
+								className="animate-rise inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/5 px-3 py-1 text-xs text-foreground transition-colors hover:border-primary/50 hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+							>
+								<MessageCircleQuestion className="size-3.5 text-primary" />
+								{q}
+							</a>
+						))}
+					</div>
+				)}
 			</CardContent>
 		</Card>
 	);
+}
+
+/** Questions the summary invites, asked in a new chat. */
+function followUps(month: string): string[] {
+	const m = monthLabel(month);
+	return [`What drove my spending in ${m}?`, `Were there unusual charges in ${m}?`, `How does ${m} compare to the month before?`];
 }
